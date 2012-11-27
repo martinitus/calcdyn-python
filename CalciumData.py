@@ -3,7 +3,6 @@ import numpy
 import scipy.spatial
 import scipy.interpolate.interpnd
 import scipy.integrate
-import
 
 # provide a continuous time evolution of a discrete variable
 class TimeLine(object):
@@ -17,18 +16,19 @@ class TimeLine(object):
 		self.interp = scipy.interpolate.interp1d(frames,data,copy = True)
 		
 	def __call__(self,t):
-		assert(t0 <= t)
-		assert(t  <= tend)
+		assert(self.t0 <= t)
+		assert(t  <= self.tend)
 		return self.interp(t)
 	
 	def tmin(self):
-		return t0
+		return self.t0
 	
 	def tmax(self):
-		return tend	
+		return self.tend	
 
 class SpatialData(object):
 	
+	# TODO: check if this class is used somewhere...
 	class My2DInterpolator(scipy.interpolate.interpnd.LinearNDInterpolator): 
 		def __init__(self, tri, values, fill_value = numpy.nan, tol=1e-6, maxiter=400): 
 			scipy.interpolate.interpnd.NDInterpolatorBase.__init__(self, tri.points, values, ndim=2, fill_value=fill_value) 
@@ -64,9 +64,16 @@ class SpatialData(object):
 			firstframe = self.frame(t)
 			lastframe  = min(self.frames.size-1,firstframe+1)
 		
+		#create interpolator for spatial coordinates	
 		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes, datas[:,firstframe:lastframe+1],fill_value = fill_value)		
 		
-		if hasattr(x, 'size') and hasattr(y, 'size'):
+		# interpolate all nodes for given time and return scattered data
+		if x == None and y == None and not hasattr(t, 'size'):
+			interpolator = scipy.interpolate.interp1d(self.frames,datas,copy = False, fill_value = fill_value)
+			return interpolator(t)
+			
+			
+		elif hasattr(x, 'size') and hasattr(y, 'size'):
 			assert(x.size == y.size)
 			coordinates = numpy.zeros([x.size,2],dtype = numpy.float32)
 			coordinates[:,0] = x[:]
@@ -83,7 +90,7 @@ class SpatialData(object):
 			coordinates = [[x,y]]
 		
 		interpolation = interpolator(coordinates)
-		#~ print "interpolation:",interpolation
+		print "interpolation:",interpolation
 		
 		timedomaininterpolator = scipy.interpolate.interp1d(self.frames[firstframe:lastframe+1],interpolation,copy = False, fill_value = fill_value)
 		
@@ -100,15 +107,16 @@ class SpatialData(object):
 		datas = self.data.swapaxes(0,1)
 		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes,datas[:,firstframe:lastframe+1],fill_value = fill_value)
 		
-		# return a callable object representing a time interpolation for the given coordinates
+	# return a callable object representing a time interpolation for the given coordinates
 	def timeline(self, x,y):
 		datas = self.data.swapaxes(0,1)
 		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes, datas[:,:])		
 		
 		interpolation = interpolator([[x,y]])[0]
-		print "interpolation:",interpolation
+		return TimeLine(self.frames,interpolation,self.tmin(),self.tmax())
+		#print "interpolation:",interpolation
 		
-		return scipy.interpolate.interp1d(self.frames,interpolation, copy = True)
+		#return scipy.interpolate.interp1d(self.frames,interpolation, copy = True)
 	
 	def write(self, path):
 		# write coordinate file

@@ -39,4 +39,4 @@ class Data(ModelData.Data):
 				
 		#~ get the indices of channels in the given state
 		indices = numpy.where(super(Data,self).states(time = time) == s)		
-		return self.channels()[indices][['x','y']]		
+		return self.channels()[indices]

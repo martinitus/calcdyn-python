@@ -5,6 +5,29 @@ import ModelData
 import scipy.integrate
 import scipy.optimize
 import math
+import matplotlib.figure
+
+# Default plot for StateTimeLine
+class StateTimeLine(matplotlib.figure.Figure):	
+	def __init__(self, data, figsize=None, dpi=None, facecolor=None, edgecolor=None, frameon=True):
+		super(StateTimeLine, self).__init__(figsize, dpi, facecolor, edgecolor, frameon)
+		self.data  = data
+			
+		ax = self.add_subplot(1,1,1)
+		ax.grid(True)
+		ax.axhline(0, color='black', lw=2)
+		ax.axis([1, self.data.tmax(), 0, 11])
+		ax.set_ylabel('channels')
+		ax.set_xlabel('time [s]')
+	
+		#~ Plot the state evolution to axes object	
+		a,= ax.plot(data.times(),data.active(),   c='green',drawstyle='steps-post',lw=2)
+		o,= ax.plot(data.times(),data.open(),     c='red',  drawstyle='steps-post',lw=2)
+		i,= ax.plot(data.times(),data.inhibited(),c='cyan', drawstyle='steps-post',lw=2)	
+		r,= ax.plot(data.times(),data.resting(),  c='blue', drawstyle='steps-post',lw=2)
+
+		ax.legend([r, a, o, i], ["resting","active","open","inhibited"], loc=2)
+		matplotlib.backends.backend_agg.FigureCanvasAgg(self)
 
 # callable object for stochastic evolution providing the propensity depending on time
 class Propensity(object):
@@ -21,8 +44,8 @@ class Propensity(object):
 		#~ print self.mttd(ca)
 		#~ mt = self.mttd(ca)
 		#~ print 1000./mt
-		return 1
-		#~ return 1000./self.mttd(self.timeline(t))
+		#~ return 1
+		return 1000./self.mttd(self.timeline(t))
 	
 	# return the value of the primitive of the propensity for time t, i.e the definite integral from tmin to t assuming a(tmin) = 0
 	#def primitive(self,t):
@@ -30,8 +53,8 @@ class Propensity(object):
 	
 	# return the definit integral of a(t) from t to t+tau
 	def definitIntegral(self,t,tau):
-		return tau
-		#~ return scipy.integrate.quad(self,t,t+tau)[0]
+		#~ return tau
+		return scipy.integrate.quad(self,t,t+tau)[0]
 		
 class Model(object):	
 	
@@ -111,7 +134,7 @@ class Model(object):
 		
 		# call all callbacks
 		for callback in self.transition_callbacks:
-			callback(time,oldstate,self.state)
+				callback(time,oldstate,self.state)
 			
 		return (time,oldstate,self.state)
 		
@@ -119,11 +142,11 @@ class Model(object):
 		self.transition_callbacks.append(callback)			
 		
 	# drive this channel by an external signal (which itself might again depend on the modelstate)
-	def drive(self, timeline, t0, tend):
+	def drive(self, timeline, t0, tend, callbacks = []):
 		# the integrand
 		def integrand(tauprime, tt = None, propensities = None):
 			if tauprime <= 0:
-				return [0]
+				return 0
 			if tt+tauprime > tend:
 				tauprime = tend-tt
 			accum    = 0.
@@ -136,25 +159,55 @@ class Model(object):
 				exponent = exponent + propi					
 				accum    = accum    + prop
 				#~ print 'prop',prop,'propi',propi
-			return [math.exp(-exponent) * accum]
+			return math.exp(-exponent) * accum
 		
 		# the equation which needs to be solved for the next transition time tau
-		def equation(tau, t = None, xi = None, propensities = None):
-			tau = tau[0]
-			if tau <= 0:
-				return [tau - xi]
-			if t+tau > tend:
-				tau[0] = tend-t
-				return [tau]
-				
-			assert(t  != None)
-			assert(xi != None)
-			assert(propensities != None)			
+		#~ def equation(tau, t = None, u = None, propensities = None):
+			#~ #tau = tau[0]
+			#~ if tau <= 0:
+				#~ return tau - u
+			#~ if t+tau > tend:
+				#~ tau = tend-t
+				#~ return tau
+				#~ 
+			#~ assert(t != None)
+			#~ assert(u >= 0)
+			#~ assert(propensities != None)			
+					#~ 
+			#~ integral = scipy.integrate.quad(lambda x: integrand(x,tt=t,propensities=propensities)[0], 0, tau)
+			#~ if(integral[1] > 1E-9):
+				#~ print 'Warning: Integrationerror:', integral[1]
+			#~ print 'u=',u,'tau=',tau,'threshold=',(integral[0] - xi)
+			#~ 
+			#~ return integral[0] - u
+			
+		def solve(u,t,propensities,start,end):
+			integral = scipy.integrate.quad(lambda x: integrand(x,tt=t,propensities=propensities), start, end)[0]
+			#~ print 'u=',u,'t=',t,'start=',start,'end=',end,'i=',integral
+			
+			# we already found the solution
+			if abs(integral - u) < 1E-9:
+				return end
+			
+			# change of sign between start and end
+			if integral > u:
+				return scipy.optimize.brentq(
+					lambda tau: scipy.integrate.quad(lambda x: integrand(x,tt=t,propensities=propensities), start, tau)[0] - u
+					,start,end)
 					
-			integral = scipy.integrate.quad(lambda x: integrand(x,tt=t,propensities=propensities)[0], 0, tau)
-			#~ print "t=",t,'tau=',tau,'threshold=',(integral[0] - xi)
-			#~ print integral
-			return integral[0] - xi
+			# we reached end of timeline
+			if end >= tend:
+				raise Exception("tend reached, no more events!")
+						
+			# no change of sign, extend search range
+			if integral < u:
+				newend = end + min(tend-t,(end - start)*2)
+				# keep searching for change of sign on the right hand side
+				return solve(u - integral,t,propensities,start = end, end = newend)
+						
+			
+			raise Exception("Should not reach here...")
+			
 			
 		while (t0 < tend):
 			# uniform random number
@@ -164,26 +217,34 @@ class Model(object):
 			props = self.propensities(timeline)
 			
 			# approximate next expected event time
-			guess = -math.log(u)/(props[0](t0)+props[1](t0))
+			guess = -math.log(1-u)/(props[0](t0)+props[1](t0))
 			# solve the equation
 			#~ result = scipy.optimize.root(lambda tau: equation(tau,t=t0,xi=u,propensities=props),guess)
 			#~ result,info,ierr,msg = scipy.optimize.fsolve(lambda tau: equation(tau,t=t0,xi=u,propensities=props),(guess),fprime = lambda tau: integrand(tau,tt=t0,propensities=props),full_output=True,maxfev = 1000)
-			result,info,ierr,msg = scipy.optimize.fsolve(lambda tau: equation(tau,t=t0,xi=u,propensities=props),(guess),full_output=True,maxfev = 1000)
-			#~ tevent = t0 + scipy.optimize.bisect(lambda tau: equation(tau,t=t0,xi=u,propensities=self.propensities(timeline)),0,tend-t0)
-			#~ if ierr!=1:
-			print 'u:',u,'result:',result,'msg:',msg,'val:',info['fvec']
+			#result,info,ierr,msg = scipy.optimize.fsolve(lambda tau: equation(tau,t=t0,xi=u,propensities=props),(guess),full_output=True,maxfev = 1000)
+			#result = scipy.optimize.brentq(lambda tau: equation(tau,t=t0,xi=u,propensities=props),0,tend-t0)
+			#~ print 'guess:',guess
+			result = solve(u,t0,props,0,guess)
 			
+			#~ print result
+			#if ierr!=1:
+			#	print 'Warning: fsolve did not converge: u:',u,'result:',result[0],'guess:',guess,'msg:',msg,'val:',info['fvec']
 			
+			tevent = t0 + result
+			approx = t0 + guess
 			
-			#~ print 'guess:',guess,'event:',result[0],'diff:',(),'rel:',
-			tevent = t0 + result[0]
-			
-			#~ print "t0",t0,"tevent",tevent
 			calcium = timeline(tevent)
-			trans = self.transition(calcium,tevent)
+			
+			source = self.state
+			self.transition(calcium,tevent)
+			target = self.state
+						
+			# call all callbacks
+			for callback in callbacks:
+				callback(t0, tevent, source, target, calcium, approx)
+				
+			# update loop variable
 			t0 = tevent
-			format ='guess: {guess:1.4f} event:{event:1.4f} err: {diff: 1.4f} rel. err: {errrel:8.2%} {source:>10s} -> {target:>10s}'
-			print format.format(guess = guess,event = result[0],diff = result[0]-guess, errrel = abs((result[0]-guess)/result[0]),source = trans[1],target=trans[2])
 	
 	# return the mean transition times for the different reactions in milliseconds
 	@staticmethod
@@ -262,7 +323,7 @@ class Data(ModelData.Data):
 				
 		#~ get the indices of channels in the given state
 		indices = numpy.where(super(Data,self).states(time = time) == s)		
-		return self.channels()[indices][['x','y']]
+		return self.channels()[indices]
 			
 	# return an array of puffs
 	# puffs[p,0] puff start
@@ -345,17 +406,4 @@ class Data(ModelData.Data):
 			result = numpy.append(result,intervalls[:,1]-intervalls[:,0])
 				
 		#~ return the distribution in miliseconds		
-		return result * 1000
-		
-	#~ Plot the state evolution to given axes object
-	def plotTimelineToAxes(self,axes):
-		a,= axes.plot(self.times(),self.active(),   c='green',drawstyle='steps-post',lw=2)
-		o,= axes.plot(self.times(),self.open(),     c='red',  drawstyle='steps-post',lw=2)
-		i,= axes.plot(self.times(),self.inhibited(),c='cyan', drawstyle='steps-post',lw=2)	
-		r,= axes.plot(self.times(),self.resting(),  c='blue', drawstyle='steps-post',lw=2)
-
-		axes.legend([r, a, o, i], ["resting","active","open","inhibited"], loc=2)
-		return [r, a, o, i]
-		
-		
-		
+		return result * 1000		
