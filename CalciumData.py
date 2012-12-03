@@ -3,28 +3,11 @@ import numpy
 import scipy.spatial
 import scipy.interpolate.interpnd
 import scipy.integrate
+import Utility
 
-# provide a continuous time evolution of a discrete variable
-class TimeLine(object):
-	def __init__(self,frames,data,t0,tend):
-		self.frames = frames
-		self.data   = data
-		self.t0     = t0
-		self.tend   = tend
-		assert(frames[0]<=t0)
-		assert(tend     <=frames[-1])
-		self.interp = scipy.interpolate.interp1d(frames,data,copy = True)
 		
-	def __call__(self,t):
-		assert(self.t0 <= t)
-		assert(t  <= self.tend)
-		return self.interp(t)
+#class SnapShot(object):
 	
-	def tmin(self):
-		return self.t0
-	
-	def tmax(self):
-		return self.tend	
 
 class SpatialData(object):
 	
@@ -108,15 +91,11 @@ class SpatialData(object):
 		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes,datas[:,firstframe:lastframe+1],fill_value = fill_value)
 		
 	# return a callable object representing a time interpolation for the given coordinates
-	def timeline(self, x,y):
+	def timeline(self,x,y):
 		datas = self.data.swapaxes(0,1)
-		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes, datas[:,:])		
-		
+		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes, datas[:,:])				
 		interpolation = interpolator([[x,y]])[0]
-		return TimeLine(self.frames,interpolation,self.tmin(),self.tmax())
-		#print "interpolation:",interpolation
-		
-		#return scipy.interpolate.interp1d(self.frames,interpolation, copy = True)
+		return Utility.TimeLine(self.frames,interpolation)
 	
 	def write(self, path):
 		# write coordinate file
@@ -179,61 +158,7 @@ class SpatialData(object):
 				mn = n
 				#~ print dist, node, mn
 			n = n + 1
-		return mn	
-	
-	#~ t0 and t1 can either be scalars or arrays given start end endtimes of separated integration intervals
-	def timeintegration(self,x,y,t0,t1):		
-		if t0.__class__.__name__ != 'ndarray':
-			assert(t0.__class__.__name__ != 'ndarray')
-			t0 = numpy.array([t0])
-			t1 = numpy.array([t1])		
-		
-		firstframe = self.frame(t0[0])
-		lastframe  = self.frame(t1[-1])+1
-				
-		#~ interpolate all required frame values for the given coordinates
-		datas = self.data.swapaxes(0,1)
-		spatial_interpolation  = scipy.interpolate.LinearNDInterpolator(self.nodes, datas[:,firstframe:lastframe+1])([[x,y]])[0]
-		
-		#~ print "requested range: [",t0[0],',',t1[-1],']'
-		#~ print "interpolatorrange: [",self.frames[firstframe],',',self.frames[lastframe],']'
-		#~ create time domain interpolator object
-		interpolator = scipy.interpolate.interp1d(self.frames[firstframe:lastframe+1],spatial_interpolation,copy = False)
-		
-		result = 0
-		#~ since we cannot set custom ranges for scipy.integrate.trapz, we need to excplicitly handle the limits
-		for i in range(t0.shape[0]):
-			f0     = self.frame(t0[i]) # the frame before the start of the present intervall
-			f1     = self.frame(t1[i]) # the frame before the end   of the present intervall
-			df     = (self.frames[f0+1] - t0[i]          ) # the delta for front
-			de     = (t1[i]             - self.frames[f1]) # the delta for end
-		
-			front  = df * interpolator(t0[i]           + df / 2.)
-			end    = de * interpolator(self.frames[f1] + de / 2.)
-			middle = scipy.integrate.trapz(spatial_interpolation[f0-firstframe+1:f1-firstframe+1],self.frames[f0+1:f1+1])
-		
-			result = result + front + end + middle
-		
-		return result
-		
-	def timeaverage(self,x,y,t0,t1):
-		#~ print "hasattr(t0, '__class__')",hasattr(t0, '__class__')		
-		#~ if hasattr(t0, '__class__'):
-			#~ print "t0.__class__.__name__", t0.__class__.__name__
-		#~ print "hasattr(t0, '__get__')",hasattr(t0, '__get__')		
-		#~ print "hasattr(t0, 'shape')",hasattr(t0, 'shape')		
-		#~ print "hasattr(t0, 'size')",hasattr(t0, 'size')		
-		
-		if t0.__class__.__name__ != 'ndarray':
-			assert(t0.__class__.__name__ != 'ndarray')
-			t0 = numpy.array([t0])
-			t1 = numpy.array([t1])		
-		
-		duration = numpy.sum(t1-t0)
-		#~ print "duration:",duration
-		
-		return self.timeintegration(x,y,t0,t1) / duration
-	
+		return mn		
 
 class RankData(SpatialData):
 	def __init__(self, path, rank = '',verbose = False):

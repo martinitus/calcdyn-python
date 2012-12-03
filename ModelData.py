@@ -2,6 +2,31 @@ import os
 import numpy
 import csv
 
+
+
+import Utility
+		
+class Channel(object):
+	def __init__(self,data,index):
+		self.data  = data
+		self.index = index
+	
+	#~ kwargs are forwarded to the TimeLine constructor
+	def stateevolution(self,**kwargs):
+		return Utility.TimeLine(self.data.data[:,0],self.data.data[:,self.index+1],**kwargs)
+		
+	#~ kwargs are forwarded to the TimeLine constructor	
+	def calciumevolution(self,**kwargs):
+		return Utility.TimeLine(self.data.data[:,0],self.data.data[:,self.index+1+self.data.channelcount()],**kwargs)
+		
+	def x(self):
+		return self.data.channels()[self.index]['x']
+	def y(self):
+		return self.data.channels()[self.index]['y']
+	def location(self):
+		return self.data.channels()[self.index][['x','y']]
+
+
 #~ At the moment the data in the csv is arranged as follows:
 #~ time | channel id | cluster id | transition | open channels | open clusters | {channel states} | {channel calciumlevels}
 
@@ -12,22 +37,36 @@ class Data(object):
 	def __init__(self, path):
 		self.__channels = numpy.genfromtxt(os.path.join(path, 'channels.csv'),dtype=[('id', int), ('x', float), ('y', float), ('r', float)])
 				
-		#~ print repr(self.__channels)
+		#~ if there is only a single channel reshape the 1D array to a 1 x n 2D array
 		if self.__channels.ndim == 0:
 			self.__channels = self.__channels.reshape([1, self.__channels.size])
 			
 		self.__channelcount = self.__channels.shape[0]
-		print "found",self.__channelcount, "channels"
+		#print "found",self.__channelcount, "channels"
 		
 		#~ read csv file
 		self.data = numpy.genfromtxt(os.path.join(path, 'transitions.csv'))
 		
 		#~ drop columns
-		self.data = self.data[:,[0] + range(6,6+2*self.channelcount())]
+		if self.data.shape[1] == 6+3+self.channelcount()*2:
+			#old format with coordinates x y z
+			print "Warning, still contains columns xyz, dropping!"
+			self.data = self.data[:,[0] + range(9,9+2*self.channelcount())]
+		elif self.data.shape[1] == 6+self.channelcount()*2:
+			#new format
+			self.data = self.data[:,[0] + range(6,6+2*self.channelcount())]
+		else:
+			raise "Unknown CSV Format!"
 		
 		#~ insert one line for the initial states
 		self.data = numpy.insert(self.data, 0, numpy.zeros(self.data.shape[1]),axis = 0)
-			
+	
+	def __repr__(self):
+		return "EventData (Channels: %d, Events: %d)" % (self.__channelcount, self.data.shape[0])
+		
+	def _repr_svg_(self):
+		return Utility.TimeLine(self.times(),self.open())
+     
 	#~ return the state for given time (or frame) and given channel, if neither time (frame) nor channel are give, all states for all frames are returned
 	#~ def state(self, time = None, frame = None, channel = None):	
 		#~ if time == None and frame != None:
@@ -48,7 +87,8 @@ class Data(object):
 		return self.__channels
 		
 	def channel(self,i):
-		return self.__channels[i] #x = x.view(np.recarray) 
+		return Channel(self,i)
+		#return self.__channels[i] #x = x.view(np.recarray) 
 	
 	def channelcount(self):
 		return self.__channelcount
@@ -73,14 +113,31 @@ class Data(object):
 		
 	#~ Calculate the intervalls the given condition evealuates to true, in either real time, or frames
 	#~ a valid condition should do something like this:
-	#~ def condition(systemstate):
-    #~ 		return np.logical_and.reduce([state_data.data[:,1] == 0, state_data.data[:,2] == 1])
+	#~ def condition(data):
+    #~ 		return np.logical_and.reduce([data[:,1] == 0, data[:,2] == 1])
     #~ and return an array of booleans indicating wether the condition is true or false for the given frame
+    #~ the first and last intervall
 	def intervalls(self, condition, frames = False):
 		selection = condition(self.data)
+		#print 'selection',selection
+		#selection = numpy.append(selection, [False])
+		#~ if the condition evaluates to true for the last frame (selection[-1] == True and selection[0] == False) the following roll-xor combination will lead switch_frame[0] == True
+		switch_frames = numpy.logical_xor(numpy.roll(selection, 1), selection)
+		switch_frames[0] = selection[0] 
+		switch_frames[-1] = False # always drop unfinished intervalls
+		#print 'switchframes',switch_frames
 		# detect where the the condition changes from true to false, the roll will directly mark the first and last frame where the condition is true
-		start_end = numpy.logical_xor(numpy.roll(selection, 1), selection).nonzero()[0] # make the returned 0-dimensional tuple an array
-		start_end = numpy.reshape(start_end,[start_end.size/2,2])                       # reshape the array to contain start-end pairs
+		start_end = switch_frames.nonzero()[0] # make the returned 0-dimensional tuple an array
+		# we condition is true up to the end, we need drop the last transition to condition = true, since we cannot return a closed interval
+		if start_end.shape[0] % 2 == 1:
+			start_end = numpy.reshape(start_end[:-1],[start_end.size/2,2])                       # reshape the array to contain start-end pairs
+		else:
+			start_end = numpy.reshape(start_end,[start_end.size/2,2])                       # reshape the array to contain start-end pairs
+		
+		# always drop intervalls already started at t=0
+		if selection[0]:
+			start_end = start_end[1:]
+			
 		if frames:
 			return start_end
 		else:

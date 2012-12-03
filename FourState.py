@@ -7,6 +7,8 @@ import scipy.optimize
 import math
 import matplotlib.figure
 
+import StringIO
+
 # Default plot for StateTimeLine
 class StateTimeLine(matplotlib.figure.Figure):	
 	def __init__(self, data, figsize=None, dpi=None, facecolor=None, edgecolor=None, frameon=True):
@@ -315,6 +317,13 @@ class Data(ModelData.Data):
 	
 	def closed(self):
 		return self.channelcount() - self.open();
+		
+	def _repr_svg_(self):
+		foo = StateTimeLine(self)
+		imgdata = StringIO.StringIO()
+		foo.savefig(imgdata, format='svg')
+		imgdata.seek(0)  # rewind the data
+		return imgdata.getvalue()
 	
 	#~ return coordinates of channels in given state for given time
 	def locations(self, time, state = 'open'):
@@ -373,29 +382,51 @@ class Data(ModelData.Data):
 		#~ array([0, 0, 1, 0, 0, 1, 0])
 	
 	
-	def stateintervals(self, channel, statename):
-		state = self.states[statename]
+	def stateintervals(self, channel, statename,frames = False):
+		#~ state = self.states[statename]
 		
-		def condition(data):
-			return data[:,1+channel] == state		
-			
-		return self.intervalls(condition)
-					
-		times  = self.data[:,0]
-		states = self.data[:,1+channel]
+		#~ def cond_resting(data):
+			#~ return data[:,1+channel] == 0
+		#~ def cond_active(data):
+			#~ return data[:,1+channel] == 1
+		#~ def cond_open(data):
+			#~ return data[:,1+channel] == 2
+		#~ def cond_inhibited(data):
+			#~ return data[:,1+channel] == 3
+		#~ print "requested state",statename,"for channel",channel
+		def cond(data, c, s):
+			#~ print "requested state",s,"for channel",c
+			return data[:,1+c] == s
+		
+		return self.intervalls(lambda data: cond(data,c=channel,s=self.states[statename]), frames)
+		
+		
+		#~ if statename == 'resting':
+			#~ return self.intervalls(cond_resting,frames)
+		#~ elif statename == 'active':
+			#~ return self.intervalls(cond_active,frames)
+		#~ elif statename == 'open':
+			#~ return self.intervalls(cond_open,frames)
+		#~ elif statename == 'inhibited':
+			#~ return self.intervalls(cond_inhibited,frames)			
+		#~ else:
+			#~ raise "Invalid State:" + statename
+		
+		#times  = self.data[:,0]
+		#states = self.data[:,1+channel]
 				
 		#~ calculate the indices of the channels transitions
-		transitions = numpy.where((numpy.roll(states, 1) - states) != 0)[0]
+		#transitions = numpy.where((numpy.roll(states, 1) - states) != 0)[0]
 		
 		#~ filter out all transitions different than the requested state name,
 		#~ and ignore state[0] and state[-1] because they will have corrupt time.
 		#~ we need to add 1 since state[0] is ignored and all indices hence are shifted to the left
-		requested   = numpy.where(states[transitions][1:-1] == state)[0] + 1
+		#requested   = numpy.where(states[transitions][1:-1] == state)[0] + 1
 		
 		#~ create array with start end end times
-		result = numpy.array([times[transitions][requested], times[numpy.roll(transitions, -1)][requested]]).transpose()
+		#result = numpy.array([times[transitions][requested], times[numpy.roll(transitions, -1)][requested]]).transpose()
 		
-		return result
+		#return result
 		
 	def statedurationdistribution(self, statename):
 		result = numpy.zeros(0,dtype = numpy.float32)
