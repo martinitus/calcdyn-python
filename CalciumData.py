@@ -5,6 +5,7 @@ import scipy.interpolate.interpnd
 import scipy.integrate
 import Utility
 
+
 		
 #class SnapShot(object):
 	
@@ -12,13 +13,16 @@ import Utility
 class SpatialData(object):
 	
 	# TODO: check if this class is used somewhere...
-	class My2DInterpolator(scipy.interpolate.interpnd.LinearNDInterpolator): 
-		def __init__(self, tri, values, fill_value = numpy.nan, tol=1e-6, maxiter=400): 
-			scipy.interpolate.interpnd.NDInterpolatorBase.__init__(self, tri.points, values, ndim=2, fill_value=fill_value) 
-			self.tri = tri			
-			self.grad = scipy.interpolate.interpnd.estimate_gradients_2d_global(self.tri, self.values, tol=tol, maxiter=maxiter) 
+	#~ class (scipy.interpolate.interpnd.LinearNDInterpolator): 
+		#~ def __init__(self, tri, values, fill_value = numpy.nan, tol=1e-6, maxiter=400): 
+			#~ scipy.interpolate.interpnd.NDInterpolatorBase.__init__(self, tri.points, values, ndim=2, fill_value=fill_value) 
+			#~ self.tri = tri			
+			#~ self.grad = scipy.interpolate.interpnd.estimate_gradients_2d_global(self.tri, self.values, tol=tol, maxiter=maxiter) 
 	
-	def __init__(self):
+	def __init__(self,dataset):
+		#~ TODO: make generic for 3 dimensions
+		#~~self.nodes = numpy.zeros([0,3], dtype=numpy.float32)
+		self.dataset = dataset
 		self.nodes = numpy.zeros([0,2], dtype=numpy.float32)
 		self.data  = numpy.zeros([0,0], dtype=numpy.float32)
 		self.frames= numpy.zeros([0,0], dtype=numpy.float32)		
@@ -158,20 +162,41 @@ class SpatialData(object):
 				mn = n
 				#~ print dist, node, mn
 			n = n + 1
-		return mn		
+		return mn
+		
+		
+	def griddata(self, time, xmin,xmax,ymin,ymax,resolution):
+		xi = numpy.linspace(xmin,xmax,resolution)
+		yi = numpy.linspace(ymin,ymax,resolution)
+		zi = scipy.interpolate.griddata((self.nodes[:,0],self.nodes[:,1]), self(time), (xi[None,:], yi[:,None]), method='cubic')
+		return zi
+		
+	def spatialextend(self):
+		return [[self.nodes[:,0].min(),self.nodes[:,0].max()],[self.nodes[:,1].min(),self.nodes[:,1].max()]]	
 
 class RankData(SpatialData):
-	def __init__(self, path, rank = '',verbose = False):
-		super(RankData, self).__init__()
+	def __init__(self, path, rank = '',verbose = False, dataset = 'calcium'):
+		super(RankData, self).__init__(dataset)
 		# read the coordinates				
+		
 		coordfile = open(os.path.join(path, 'coordinates' + rank + '.bin'))		
 		self.nodes = numpy.fromfile(coordfile, dtype=numpy.float32)
-		self.nodes = numpy.reshape(self.nodes,(self.nodes.size / 2,2))					
-				
+		
+		D2 = False
+		
+		if(D2):
+			print "using 2D dataset", self.nodes.size
+			self.nodes = numpy.reshape(self.nodes,(self.nodes.size / 2,2))			
+		else:
+			print "using 3D dataset", self.nodes.size
+			self.nodes = numpy.reshape(self.nodes,(self.nodes.size / 3,3))
+			self.nodes = self.nodes[:,0:2]
+			
+			
 		# read the data file in 10mb junks
-		datafile = open(os.path.join(path, 'calcium' + rank + '.bin'))
+		datafile = open(os.path.join(path, dataset + rank + '.bin'))
 		floats_per_block = 10*1024*1024/4
-		floats_in_file   = os.path.getsize(os.path.join(path, 'calcium' + rank + '.bin'))/4
+		floats_in_file   = os.path.getsize(os.path.join(path, dataset + rank + '.bin'))/4
 		self.data        = numpy.zeros(floats_in_file,dtype = numpy.float32)
 		block            = 0
 		blocks           = floats_in_file / floats_per_block
@@ -209,8 +234,8 @@ class RankData(SpatialData):
 			print '   t=[{start:.8f}, {end:.8f}], {frames} frames {flag}'.format(start=float(self.frames[0]), end = float(self.frames[-1]), frames = self.frames.size, flag = foo)
 
 class ParallelData(SpatialData):
-	def __init__(self, path):
-		super(ParallelData, self).__init__()	
+	def __init__(self, path,dataset='calcium'):
+		super(ParallelData, self).__init__(dataset)	
 		#print 'Trying to merge files from', path
 		ranks = self.loadRankFiles(path)
 		
@@ -234,13 +259,13 @@ class ParallelData(SpatialData):
 	def loadRankFiles(self,path):
 		ranks = []
 		rank = 0
-		while os.path.exists(os.path.join(path, 'calcium_rank_' + str(rank) + '.bin')) and os.path.exists(os.path.join(path, 'coordinates_rank_' + str(rank) + '.bin')):	
+		while os.path.exists(os.path.join(path, self.dataset + '_rank_' + str(rank) + '.bin')) and os.path.exists(os.path.join(path, 'coordinates_rank_' + str(rank) + '.bin')):	
 			ranks.append(RankData(path, '_rank_' + str(rank)))	
 			rank += 1
 			
 		if len(ranks) == 0:
 			# check for sequential output file
-			if os.path.exists(os.path.join(path, 'calcium.bin')) and os.path.exists(os.path.join(path, 'coordinates.bin')):	
+			if os.path.exists(os.path.join(path, self.dataset + '.bin')) and os.path.exists(os.path.join(path, 'coordinates.bin')):	
 				ranks.append(RankData(path))
 				
 		if len(ranks) == 0:
