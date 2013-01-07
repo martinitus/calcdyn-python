@@ -3,12 +3,23 @@ import numpy
 import scipy.spatial
 import scipy.interpolate.interpnd
 import scipy.integrate
-import Utility
+import TimeLine
 
-
+class ERDomain(object):
+	def __init__(self, path):
+		self.calcium = ParallelData(path,'er_calcium')
 		
-#class SnapShot(object):
-	
+class CYDomain(object):
+	def __init__(self, path):
+		self.calcium = ParallelData(path,'cy_calcium')
+		self.mobile = ParallelData(path,'mobile')
+		self.dye = ParallelData(path,'dye')
+		self.stationary = ParallelData(path,'stationary')
+
+class DataSet(object):
+	def __init__(self,path):
+		self.erdomain = ERDomain(path)	
+		self.cydomain = CYDomain(path)
 
 class SpatialData(object):
 	
@@ -99,7 +110,7 @@ class SpatialData(object):
 		datas = self.data.swapaxes(0,1)
 		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes, datas[:,:])				
 		interpolation = interpolator([[x,y]])[0]
-		return Utility.TimeLine(self.frames,interpolation)
+		return TimeLine.TimeLine(self.frames,interpolation,self.tmin(),self.tmax())
 	
 	def write(self, path):
 		# write coordinate file
@@ -175,20 +186,20 @@ class SpatialData(object):
 		return [[self.nodes[:,0].min(),self.nodes[:,0].max()],[self.nodes[:,1].min(),self.nodes[:,1].max()]]	
 
 class RankData(SpatialData):
-	def __init__(self, path, rank = '',verbose = False, dataset = 'calcium'):
+	def __init__(self, path, dataset, rank = '',verbose = False):
 		super(RankData, self).__init__(dataset)
 		# read the coordinates				
 		
-		coordfile = open(os.path.join(path, 'coordinates' + rank + '.bin'))		
+		coordfile = open(os.path.join(path,  self.dataset + '_coordinates' + rank + '.bin'))		
 		self.nodes = numpy.fromfile(coordfile, dtype=numpy.float32)
 		
 		D2 = False
 		
 		if(D2):
-			print "using 2D dataset", self.nodes.size
+			#print "using 2D dataset", self.nodes.size
 			self.nodes = numpy.reshape(self.nodes,(self.nodes.size / 2,2))			
 		else:
-			print "using 3D dataset", self.nodes.size
+			#print "using 3D dataset", self.nodes.size
 			self.nodes = numpy.reshape(self.nodes,(self.nodes.size / 3,3))
 			self.nodes = self.nodes[:,0:2]
 			
@@ -234,10 +245,10 @@ class RankData(SpatialData):
 			print '   t=[{start:.8f}, {end:.8f}], {frames} frames {flag}'.format(start=float(self.frames[0]), end = float(self.frames[-1]), frames = self.frames.size, flag = foo)
 
 class ParallelData(SpatialData):
-	def __init__(self, path,dataset='calcium'):
+	def __init__(self,path,dataset):
 		super(ParallelData, self).__init__(dataset)	
-		#print 'Trying to merge files from', path
-		ranks = self.loadRankFiles(path)
+		print 'Trying to merge files from', path, dataset
+		ranks = self.loadRankFiles(path,dataset)
 		
 		# combine the positions
 		self.nodes = numpy.concatenate(list(rank.nodes for rank in ranks))		
@@ -256,16 +267,21 @@ class ParallelData(SpatialData):
 			
 		#print 'Found', self.nodes, 'nodes and', self.frames, 'frames (t=[',self.time(0),',',self.time(self.frames-1),'])'
 		
-	def loadRankFiles(self,path):
+	def loadRankFiles(self,path,dataset):
 		ranks = []
 		rank = 0
-		while os.path.exists(os.path.join(path, self.dataset + '_rank_' + str(rank) + '.bin')) and os.path.exists(os.path.join(path, 'coordinates_rank_' + str(rank) + '.bin')):	
-			ranks.append(RankData(path, '_rank_' + str(rank)))	
+		datafilename  = "{0}_rank_{1}.bin"
+		coordfilename = "{0}_coordinates_rank_{1}.bin"
+		#print datafilename.format(dataset, rank)
+		#print coordfilename.format(dataset, rank)
+		
+		while os.path.exists(os.path.join(path, datafilename.format(dataset, rank))) and os.path.exists(os.path.join(path, coordfilename.format(dataset, rank))):	
+			ranks.append(RankData(path, dataset, '_rank_' + str(rank)))	
 			rank += 1
 			
 		if len(ranks) == 0:
 			# check for sequential output file
-			if os.path.exists(os.path.join(path, self.dataset + '.bin')) and os.path.exists(os.path.join(path, 'coordinates.bin')):	
+			if os.path.exists(os.path.join(path, self.dataset + '.bin')) and os.path.exists(os.path.join(path,  self.dataset + '_coordinates.bin')):	
 				ranks.append(RankData(path))
 				
 		if len(ranks) == 0:

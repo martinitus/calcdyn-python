@@ -2,9 +2,7 @@ import os
 import numpy
 import csv
 
-
-
-import Utility
+import Timeline
 		
 class Channel(object):
 	def __init__(self,data,index):
@@ -13,11 +11,11 @@ class Channel(object):
 	
 	#~ kwargs are forwarded to the TimeLine constructor
 	def stateevolution(self,**kwargs):
-		return Utility.TimeLine(self.data.data[:,0],self.data.data[:,self.index+1],**kwargs)
+		return TimeLine.TimeLine(self.data.data[:,0],self.data.data[:,self.index+1],**kwargs)
 		
 	#~ kwargs are forwarded to the TimeLine constructor	
 	def calciumevolution(self,**kwargs):
-		return Utility.TimeLine(self.data.data[:,0],self.data.data[:,self.index+1+self.data.channelcount()],**kwargs)
+		return TimeLine.TimeLine(self.data.data[:,0],self.data.data[:,self.index+1+self.data.channelcount()],**kwargs)
 		
 	def x(self):
 		return self.data.channels()[self.index]['x']
@@ -65,7 +63,7 @@ class Data(object):
 		return "EventData (Channels: %d, Events: %d)" % (self.__channelcount, self.data.shape[0])
 		
 	def _repr_svg_(self):
-		return Utility.TimeLine(self.times(),self.open())
+		return TimeLine.TimeLine(self.times(),self.open())
      
 	#~ return the state for given time (or frame) and given channel, if neither time (frame) nor channel are give, all states for all frames are returned
 	#~ def state(self, time = None, frame = None, channel = None):	
