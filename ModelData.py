@@ -2,7 +2,7 @@ import os
 import numpy
 import csv
 
-import Timeline
+import TimeLine
 		
 class Channel(object):
 	def __init__(self,data,index):

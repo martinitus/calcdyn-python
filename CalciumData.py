@@ -7,19 +7,131 @@ import TimeLine
 
 class ERDomain(object):
 	def __init__(self, path):
-		self.calcium = ParallelData(path,'er_calcium')
+		summary = []
+		self.calcium = None
+		self.debug   = None
+		
+		self.frames = None
+		self.nodes  = None
+		
+		try:
+			self.calcium = ParallelData(path,'er_calcium')
+			self.frames = self.calcium.frames;
+			self.nodes  = self.calcium.nodes;
+			summary += ['er_calcium']
+		except Exception, e:
+			print e.message			
+		try:
+			self.debug = ParallelData(path,'er_debug')
+			assert((self.frames == self.debug.frames).all())
+			assert((self.nodes == self.debug.nodes).all())
+			summary += ['er_debug']		
+		except:
+			pass
+		print 'Found:', summary
+	
+	def select(self,xmin,xmax,ymin,ymax):
+		if(self.calcium != None):
+			self.calcium.select(xmin,xmax,ymin,ymax)
+		if(self.debug != None):
+			self.debug.select(xmin,xmax,ymin,ymax)
 		
 class CYDomain(object):
 	def __init__(self, path):
-		self.calcium = ParallelData(path,'cy_calcium')
-		self.mobile = ParallelData(path,'mobile')
-		self.dye = ParallelData(path,'dye')
-		self.stationary = ParallelData(path,'stationary')
+		summary = []
+		self.calcium    = None
+		self.debug      = None
+		self.stationary = None
+		self.mobile     = None
+		self.dye        = None
+		
+		try:
+			self.calcium = ParallelData(path,'cy_calcium')
+			self.frames = self.calcium.frames;
+			self.nodes  = self.calcium.nodes;
+			summary += ['cy_calcium']
+		except Exception, e:
+			print e.message			
+		try:
+			self.mobile = ParallelData(path,'mobile')
+			assert((self.frames == self.mobile.frames).all())
+			assert((self.nodes == self.mobile.nodes).all())
+			summary += ['mobile']
+		except Exception, e:
+			print e.message			
+		try:
+			self.dye = ParallelData(path,'dye')
+			assert((self.frames == self.dye.frames).all())
+			assert((self.nodes == self.dye.nodes).all())
+			summary += ['dye']
+		except Exception, e: 
+			print e.message			
+		try:
+			self.stationary = ParallelData(path,'stationary')
+			assert((self.frames == self.stationary.frames).all())
+			assert((self.nodes == self.stationary.nodes).all())
+			summary +=  ['stationary']
+		except Exception, e: 
+			print e.message			
+		try:
+			self.debug = ParallelData(path,'cy_debug')	
+			assert((self.frames == self.debug.frames).all())
+			assert((self.nodes == self.debug.nodes).all())		
+			summary += ['cy_debug']
+			#print 'Found debug informations for cytosolic membrane calcium'
+		except Exception:			
+			pass
+		
+		print 'Found:',summary		
+		
+	def select(self,xmin,xmax,ymin,ymax):
+		if(self.calcium != None):
+			self.calcium.select(xmin,xmax,ymin,ymax)
+			self.nodes = self.calcium.nodes
+		if(self.debug != None):
+			self.debug.select(xmin,xmax,ymin,ymax)
+		if(self.mobile != None):
+			self.mobile.select(xmin,xmax,ymin,ymax)
+		if(self.stationary != None):
+			self.stationary.select(xmin,xmax,ymin,ymax)
+		if(self.dye != None):
+			self.dye.select(xmin,xmax,ymin,ymax)
 
 class DataSet(object):
 	def __init__(self,path):
+		print 'Loading spatial data from', path
 		self.erdomain = ERDomain(path)	
 		self.cydomain = CYDomain(path)
+		#print self.erdomain.frames
+		#print self.cydomain.frames
+		#assert((self.erdomain.frames == self.cydomain.frames).all())
+		if(self.erdomain.frames.size<self.cydomain.frames.size):
+			self.frames = self.erdomain.frames;		
+		else:
+			self.frames = self.cydomain.frames;	
+			
+		self.nodes = self.cydomain.nodes
+		# permute data of erdomain to match cydomain node distribution
+		permutation = numpy.zeros(self.erdomain.nodes.shape[0],dtype = numpy.int)
+		i=0
+		for node in self.erdomain.nodes:    
+			permutation[i] = numpy.where(numpy.logical_and(self.cydomain.nodes[:,0] == node[0],self.cydomain.nodes[:,1] == node[1]))[0][0]
+			i = i+1
+		self.erdomain.nodes         = self.cydomain.nodes
+		self.erdomain.calcium.nodes = self.cydomain.nodes
+		self.erdomain.debug.nodes   = self.cydomain.nodes
+		self.erdomain.calcium.data  = self.erdomain.calcium.data[:,permutation]
+		self.erdomain.debug.data    = self.erdomain.debug.data[:,permutation]
+	
+	def select(self,xmin,xmax,ymin,ymax):
+		self.erdomain.select(xmin,xmax,ymin,ymax)
+		self.cydomain.select(xmin,xmax,ymin,ymax)
+	
+	def tmax(self):
+		return self.frames[-1];
+		
+	def tmin(self):
+		return self.frames[0];
 
 class SpatialData(object):
 	
@@ -38,6 +150,13 @@ class SpatialData(object):
 		self.data  = numpy.zeros([0,0], dtype=numpy.float32)
 		self.frames= numpy.zeros([0,0], dtype=numpy.float32)		
 		#~ self.interpolator  = None
+		self.triangulation = None
+	
+	def select(self,xmin,xmax,ymin,ymax):
+		selection = numpy.logical_and(numpy.logical_and(xmin<=self.nodes[:,0],self.nodes[:,0] <= xmax),numpy.logical_and(ymin<=self.nodes[:,1],self.nodes[:,1] <= ymax))
+		self.nodes = self.nodes[selection]
+		self.data  = self.data[:,selection]
+        # reset triangulation
 		self.triangulation = None
 		
 	#~ t, x, and y can all be either scalar or array types, if x and y are vectors, they both need to be the same size
@@ -247,7 +366,7 @@ class RankData(SpatialData):
 class ParallelData(SpatialData):
 	def __init__(self,path,dataset):
 		super(ParallelData, self).__init__(dataset)	
-		print 'Trying to merge files from', path, dataset
+		#print 'Loading: ', path, dataset
 		ranks = self.loadRankFiles(path,dataset)
 		
 		# combine the positions
@@ -280,12 +399,12 @@ class ParallelData(SpatialData):
 			rank += 1
 			
 		if len(ranks) == 0:
-			# check for sequential output file
+			# check for sequential output file			
 			if os.path.exists(os.path.join(path, self.dataset + '.bin')) and os.path.exists(os.path.join(path,  self.dataset + '_coordinates.bin')):	
-				ranks.append(RankData(path))
+				ranks.append(RankData(path, dataset, ''))
 				
 		if len(ranks) == 0:
-			raise Exception('Cannot find any data files in ' + os.path.relpath(path))
+			raise Exception('Cannot find ' + dataset + ' files in ' + os.path.relpath(path))
 		return ranks
 		
 
