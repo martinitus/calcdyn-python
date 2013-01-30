@@ -4,15 +4,24 @@ import matplotlib.figure
 
 # provide a continuous time evolution of a discrete variable
 class TimeLine(object):
-	def __init__(self,frames,data,t0,tend):
+	def __init__(self,frames,data,t0 = None,tend = None):
 		self.frames = frames
 		self.data   = data
-		self.t0     = t0
-		self.tend   = tend
+		
+		if t0 == None:
+			self.t0 = frames[0]
+		else:
+			self.t0 = t0
+			
+		if tend == None:
+			self.tend = frames[-1]
+		else:
+			self.tend = tend			
+		
 		self.minframe = self.frame(self.tmin())
 		self.maxframe = self.frame(self.tmax())
-		assert(frames[0]<=t0)
-		assert(tend     <=frames[-1])
+		assert(frames[0]<=self.t0)
+		assert(self.tend     <=frames[-1])
 		self.interp = scipy.interpolate.interp1d(frames,data,copy = True)
 		
 		
