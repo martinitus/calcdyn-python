@@ -34,20 +34,15 @@ class StateTimeLine(matplotlib.figure.Figure):
 # callable object for stochastic evolution providing the propensity depending on time
 class Propensity(object):
 	# transition should be a function taking calciumlevel as argument and returning the mean transition time
-	def __init__(self, calciume_timeline, mean_transition_time_dependency):
-		self.timeline= calciume_timeline
-		self.mttd    = mean_transition_time_dependency
+	def __init__(self, channel, mtt):
+		self.channel = channel
+		self.mtt     = mtt
+		self.f       = 0
 		
 	# return the propensity for time t
-	def __call__(self,t):
+	def __call__(self,calcium,t):
 		# since mttd returns the mean transition time in milliseconds we need to convert to a rate in seconds
-		#~ print self.timeline(t)
-		#~ ca = self.timeline(t)
-		#~ print self.mttd(ca)
-		#~ mt = self.mttd(ca)
-		#~ print 1000./mt
-		#~ return 1
-		return 1000./self.mttd(self.timeline(t))
+		return numpy.exp(self.channel.propensities.f())  1000./self.mtt(calcium(t))
 	
 	# return the value of the primitive of the propensity for time t, i.e the definite integral from tmin to t assuming a(tmin) = 0
 	#def primitive(self,t):
@@ -58,7 +53,24 @@ class Propensity(object):
 		#~ return tau
 		return scipy.integrate.quad(self,t,t+tau)[0]
 		
-class Model(object):	
+class Propensities(object):
+	def __init__(self, channel):
+		if   channel.state == 'open':
+			self.propensities = [Propensity(channel,Model.TOI),Propensity(channel,Model.TOA)]
+		elif channel.state == 'active':
+			self.propensities = [Propensity(channel,Model.TAO),Propensity(channel,Model.TAR)]
+		elif channel.state == 'resting':
+			self.propensities = [Propensity(channel,Model.TRA),Propensity(channel,Model.TRI)]
+		elif channel.state == 'inhibited':
+			self.propensities = [Propensity(channel,Model.TIR),Propensity(channel,Model.TIO)]
+		raise Exception("Invalid state: " + self.state)
+		#TODO!
+		self.__f = 0
+		
+	def f(self,t):
+		return self.__f;
+		
+class Channel(object):	
 	
 	k01 = 0.0162      # 1/(microM   ms)
 	k12 = 0.027       # 1/(microM^2 ms) 
@@ -81,20 +93,20 @@ class Model(object):
 	def __init__(self,state, transition_callbacks = []):
 		self.state = state
 		self.transition_callbacks = transition_callbacks
+		
+		self.propensities = Propensities(self)
+		
+		# propensity integration
+		self.g  = 0; # cumulativ density function integration
+		# integration limit
+		self.xi = numpy.random.uniform()
 	
 	# return a list of propensity objects describing the propensities for the different transitions
-	def propensities(self,timeline):
-		if   self.state == 'open':
-			return [Propensity(timeline,Model.TOI),Propensity(timeline,Model.TOA)]
-		elif self.state == 'active':
-			return [Propensity(timeline,Model.TAO),Propensity(timeline,Model.TAR)]
-		elif self.state == 'resting':
-			return [Propensity(timeline,Model.TRA),Propensity(timeline,Model.TRI)]
-		elif self.state == 'inhibited':
-			return [Propensity(timeline,Model.TIR),Propensity(timeline,Model.TIO)]
-		raise Exception("Invalid state: " + self.state)
+	def nextPropensities(self):
+		
 		
 	# perform a random transition according to propensities governed by the given calcium level
+	# this is supposed to be a private method...
 	def transition(self, calcium, time):
 		# pick random uniform number
 		u  = numpy.random.rand(1)[0]
@@ -137,11 +149,30 @@ class Model(object):
 		# call all callbacks
 		for callback in self.transition_callbacks:
 				callback(time,oldstate,self.state)
-			
+		
+		#reset integration limit and pick new one
+		self.g  = 0;
+		self.xi = numpy.random.uniform()
+		
+		#return event information
 		return (time,oldstate,self.state)
 		
 	def addTransitionCallback(self,callback):
-		self.transition_callbacks.append(callback)			
+		self.transition_callbacks.append(callback)
+		
+	
+	def applytimestep(self, calcium, t0, tau):
+		# initialize propensitie functions		
+		propensities = self.propensities(calcium);
+		
+		# integrate propensities for time step
+		increment = 
+		
+		# check if there will be a transition within this time step
+		if (self.g + increment >= self.xi):
+			
+		
+		# increase accumulated propensities
 		
 	# drive this channel by an external signal (which itself might again depend on the modelstate)
 	def drive(self, timeline, t0, tend, callbacks = []):

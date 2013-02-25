@@ -1,12 +1,16 @@
 import scipy.interpolate
 import StringIO
 import matplotlib.figure
+import matplotlib.pyplot as plt
 
 # provide a continuous time evolution of a discrete variable
 class TimeLine(object):
-	def __init__(self,frames,data,t0 = None,tend = None):
+	def __init__(self,frames,data,t0 = None,tend = None, desc="", ylabel="",yunit=""):
 		self.frames = frames
 		self.data   = data
+		self.ylabel = desc
+		self.yunit  = yunit
+		self.desc   = desc
 		
 		if t0 == None:
 			self.t0 = frames[0]
@@ -42,19 +46,33 @@ class TimeLine(object):
 		return self.tend	
 		
 	def _repr_svg_(self):
-		fig=matplotlib.figure.Figure(figsize=(10,3))
-		ax = fig.add_subplot(111)
-		ax.grid(True)
-		ax.axhline(0, color='black', lw=2)		
-		ax.set_ylabel('ca [microMolar]')
-		ax.set_xlabel('time [s]')		
-		ax.plot(self.frames,self.data, c='black',lw=2)
-		ax.axis([self.tmin(), self.tmax(), self.data[self.minframe:self.maxframe].min(), self.data[self.minframe:self.maxframe].max()])
+		fig=self.plot()
 		output = StringIO.StringIO()		
-		matplotlib.backends.backend_agg.FigureCanvasAgg(fig)
 		fig.savefig(output,format='svg')
 		output.seek(0)
 		return output.getvalue()
+		
+	def plot(self, tmin = None, tmax = None, ymin = None, ymax = None):
+		tmin = self.tmin() if tmin == None else tmin
+		tmax = self.tmax() if tmax == None else tmax
+
+		
+		fig=plt.figure(figsize=(10,3))
+		ax = fig.add_subplot(111)
+		ax.grid(True)
+		ax.axhline(0, color='black', lw=2)		
+		ax.set_ylabel(self.yunit + '[' + self.yunit +']')
+		ax.set_xlabel('time [s]')		
+		
+		ax.plot(self.frames,self.data, c='black',lw=2)
+		ax.set_xlim(tmin, tmax)
+		
+		if(ymin != None):
+			ax.set_ylim(ymin,ymax)		
+		
+		#matplotlib.backends.backend_agg.FigureCanvasAgg(fig)
+		
+		return fig
 		
 			#~ return the smallest frame number past the given time	
 	def frame(self, time, fmin = 0, fmax = -1):
@@ -77,3 +95,4 @@ class TimeLine(object):
 			return self.frame(time,f,fmax)
 		
 		raise Exception("should never be reached...")
+	

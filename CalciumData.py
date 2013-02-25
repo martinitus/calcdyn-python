@@ -131,17 +131,20 @@ class DataSet(object):
 		
 	def tmin(self):
 		return self.frames[0];
+		
+	'''
+	interpolate all contained data for x y coordinate
+	'''
+	def timeline(self, x , y ):
+		datas = self.data.swapaxes(0,1)
+		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes, datas[:,:])				
+		interpolation = interpolator([[x,y]])[0]
+		return TimeLine.TimeLine(self.frames,interpolation,self.tmin(),self.tmax())
+		
 
 class SpatialData(object):
 	
-	# TODO: check if this class is used somewhere...
-	#~ class (scipy.interpolate.interpnd.LinearNDInterpolator): 
-		#~ def __init__(self, tri, values, fill_value = numpy.nan, tol=1e-6, maxiter=400): 
-			#~ scipy.interpolate.interpnd.NDInterpolatorBase.__init__(self, tri.points, values, ndim=2, fill_value=fill_value) 
-			#~ self.tri = tri			
-			#~ self.grad = scipy.interpolate.interpnd.estimate_gradients_2d_global(self.tri, self.values, tol=tol, maxiter=maxiter) 
-	
-	def __init__(self,dataset):
+	def __init__(self,dataset,path=None):
 		#~ TODO: make generic for 3 dimensions
 		#~~self.nodes = numpy.zeros([0,3], dtype=numpy.float32)
 		self.dataset = dataset
@@ -150,6 +153,10 @@ class SpatialData(object):
 		self.frames= numpy.zeros([0,0], dtype=numpy.float32)		
 		#~ self.interpolator  = None
 		self.triangulation = None
+		
+		if path!=None:
+			print 'using new loading interface!'
+			load(path, dataset, self)
 	
 	def select(self,xmin,xmax,ymin,ymax):
 		selection = numpy.logical_and(numpy.logical_and(xmin<=self.nodes[:,0],self.nodes[:,0] <= xmax),numpy.logical_and(ymin<=self.nodes[:,1],self.nodes[:,1] <= ymax))
@@ -304,22 +311,11 @@ class SpatialData(object):
 		return [[self.nodes[:,0].min(),self.nodes[:,0].max()],[self.nodes[:,1].min(),self.nodes[:,1].max()]]	
 
 class RankData(SpatialData):
-	def __init__(self, path, dataset, rank = '',verbose = False):
+	def __init__(self, path, dataset, rank, verbose = False):
 		super(RankData, self).__init__(dataset)
+		
 		# read the coordinates				
-		
-		
-		# check for new file name endings...
-		if rank == '' and os.path.exists(os.path.join(path,  self.dataset + '_coordinates' + rank + '.bin')):
-			coordfile = open(os.path.join(path,  self.dataset + '_coordinates' + rank + '.bin'))		
-		elif rank == '' and os.path.exists(os.path.join(path,  self.dataset + '_coordinates_rank_0.bin')):
-			coordfile = open(os.path.join(path,  self.dataset + '_coordinates_rank_0.bin'))
-		elif os.path.exists(os.path.join(path,  self.dataset + '_coordinates' + rank + '.bin')):
-			coordfile = open(os.path.join(path,  self.dataset + '_coordinates' + rank + '.bin'))		
-		else:
-			raise Exception("Cannot load coordinate file"+dataset+rank)
-
-			
+		coordfile = open(RankData.coordfile(path,dataset,rank))					
 		self.nodes = numpy.fromfile(coordfile, dtype=numpy.float32)
 		
 		D2 = False
@@ -334,9 +330,9 @@ class RankData(SpatialData):
 			
 			
 		# read the data file in 10mb junks
-		datafile = open(os.path.join(path, dataset + rank + '.bin'))
+		datafile = open(RankData.datafile(path,dataset,rank))
 		floats_per_block = 10*1024*1024/4
-		floats_in_file   = os.path.getsize(os.path.join(path, dataset + rank + '.bin'))/4
+		floats_in_file   = os.path.getsize(RankData.datafile(path,dataset,rank))/4
 		self.data        = numpy.zeros(floats_in_file,dtype = numpy.float32)
 		block            = 0
 		blocks           = floats_in_file / floats_per_block
@@ -372,6 +368,27 @@ class RankData(SpatialData):
 		self.data = self.data[:,1:]
 		if verbose:
 			print '   t=[{start:.8f}, {end:.8f}], {frames} frames {flag}'.format(start=float(self.frames[0]), end = float(self.frames[-1]), frames = self.frames.size, flag = foo)
+	
+	@staticmethod
+	def coordfile(path, dataset, rank):
+		if (os.path.exists(os.path.join(path,  dataset + '_coordinates_rank_' + str(rank) + '.bin'))):
+			return os.path.join(path,  dataset + '_coordinates_rank_' + str(rank) + '.bin')
+		if rank == 0:			
+			if(os.path.exists(os.path.join(path,  dataset + '_coordinates.bin'))):
+				return os.path.join(path,  dataset + '_coordinates.bin')
+		if os.path.exists(os.path.join(path,  'coordinates.bin')):
+			print 'Warning: Deteceted old nameing sheme coordinate file...'
+			return os.path.join(path,  'coordinates.bin')
+		return None
+	
+	@staticmethod
+	def datafile(path, dataset, rank):
+		if (os.path.exists(os.path.join(path,  dataset + '_rank_' + str(rank) + '.bin'))):
+			return os.path.join(path,  dataset + '_rank_' + str(rank) + '.bin')
+		if rank == 0:			
+			if(os.path.exists(os.path.join(path,  dataset + '.bin'))):
+				return os.path.join(path,  dataset + '.bin')
+		return None
 
 class ParallelData(SpatialData):
 	def __init__(self,path,dataset):
@@ -398,20 +415,15 @@ class ParallelData(SpatialData):
 		
 	def loadRankFiles(self,path,dataset):
 		ranks = []
-		rank = 0
-		datafilename  = "{0}_rank_{1}.bin"
-		coordfilename = "{0}_coordinates_rank_{1}.bin"
-		#print datafilename.format(dataset, rank)
-		#print coordfilename.format(dataset, rank)
 		
-		while os.path.exists(os.path.join(path, datafilename.format(dataset, rank))) and os.path.exists(os.path.join(path, coordfilename.format(dataset, rank))):	
-			ranks.append(RankData(path, dataset, '_rank_' + str(rank)))	
+		rank = 0
+		while True:
+			have_coordfile = RankData.coordfile(path,dataset,rank) != None
+			have_datafile  = RankData.datafile(path,dataset,rank) != None
+			if not have_datafile or not have_coordfile:
+				break
+			ranks.append(RankData(path, dataset, rank))	
 			rank += 1
-			
-		if len(ranks) == 0:
-			# check for sequential output file			
-			if os.path.exists(os.path.join(path, self.dataset + '.bin')) and os.path.exists(os.path.join(path,  self.dataset + '_coordinates.bin')):	
-				ranks.append(RankData(path, dataset, ''))
 				
 		if len(ranks) == 0:
 			raise Exception('Cannot find ' + dataset + ' files in ' + os.path.relpath(path))
