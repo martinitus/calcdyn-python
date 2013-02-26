@@ -8,145 +8,8 @@ import math
 import matplotlib.figure
 import StringIO
 
-# Default plot for StateTimeLine
-class StateTimeLine(matplotlib.figure.Figure):	
-	def __init__(self, data, figsize=None, dpi=None, facecolor=None, edgecolor=None, frameon=True):
-		super(StateTimeLine, self).__init__(figsize, dpi, facecolor, edgecolor, frameon)
-		self.data  = data
-			
-		ax = self.add_subplot(1,1,1)
-		ax.grid(True)
-		ax.axhline(0, color='black', lw=2)
-		ax.axis([1, self.data.tmax(), 0, 11])
-		ax.set_ylabel('channels')
-		ax.set_xlabel('time [s]')
+class StochasticChannel(object):	
 	
-		#~ Plot the state evolution to axes object	
-		a,= ax.plot(data.times(),data.active(),   c='green',drawstyle='steps-post',lw=2)
-		o,= ax.plot(data.times(),data.open(),     c='red',  drawstyle='steps-post',lw=2)
-		i,= ax.plot(data.times(),data.inhibited(),c='cyan', drawstyle='steps-post',lw=2)	
-		r,= ax.plot(data.times(),data.resting(),  c='blue', drawstyle='steps-post',lw=2)
-
-		ax.legend([r, a, o, i], ["resting","active","open","inhibited"], loc=2)
-		matplotlib.backends.backend_agg.FigureCanvasAgg(self)
-		
-		
-		
-import scipy.interpolate
-
-# provide a continuous time evolution of a discrete variable
-class TimeLine(object):
-	def __init__(self,frames,data):
-		self.frames = frames
-		self.data   = data
-		
-	def __call__(self, t):
-		assert(self.t0 <= t)
-		assert(t  <= self.tend)
-		return scipy.interpolate.interp1d(frames,data,copy = False)(t)		
-	
-	def tmin(self):
-		return self.frames[0]
-	
-	def tmax(self):
-		return self.frames[-1]
-		
-	#~ return the largest frame number before the given time	
-	def frame(self, time, fmin = 0, fmax = -1):
-		if fmax == -1:
-			fmax = self.frames.size-1
-			
-		#~ print 'time',time,'fmin',fmin,'fmax',fmax
-		#abort recursion
-		if fmax - fmin == 1:
-			return fmin
-			
-		f = fmin + (fmax-fmin)/2
-		#search in left hand side
-		if self.frames[f] > time:
-			#~ print 'lhs'
-			return self.frame(time,fmin,f)
-		#search in right hand side
-		if self.frames[f] <= time:
-			#~ print 'rhs'
-			return self.frame(time,f,fmax)
-		
-		raise Exception("should never be reached...")
-	
-
-
-# callable object for stochastic evolution providing the propensity depending on time
-class Reaction(object):
-	# transition should be a function taking calciumlevel as argument and returning the mean transition time
-	def __init__(self, channel, mtt):
-		self.channel = channel
-		self.mtt     = mtt
-		self.__f     = TimeLine([channel.lasteventtime()],[0])
-		
-	# return the propensity for time t
-	def rho(self,t):
-		# since mttd returns the mean transition time in milliseconds we need to convert to a rate in seconds
-		return self.rate(t) * numpy.exp(-1 * self.channel.propensities().f(t))
-		
-	def rate(self,t)
-		return  1000./self.mtt(self.channel.calcium(t))
-	
-	# return the definit integral of a(t) from t to t+tau
-	def f(self,t):
-		fi = self.__f.frame(t)
-		ti = self.__f.frames[fi]
-		di = self.__f.data[fi];
-		return di + scipy.integrate.quad(self.rate,ti,t)
-	
-	# update time integration of f, i.e. append data to timeline
-	def evolve(self,tau):
-		self.__f.frames = self.__f.frames + [self.__f.frames[-1] + tau]
-		self.__f.data   = self.__f.data   + [self.__f.data[-1] + scipy.integrate.quad(self.rate,self.__f.tmax(),self.__f.tmax()+tau)]
-		
-class Reactions(object):
-	def __init__(self, channel):
-		if   channel.state == 'open':
-			self.reactions = [Reaction(channel,Model.TOI),Reaction(channel,Model.TOA)]
-		elif channel.state == 'active':
-			self.reactions = [Reaction(channel,Model.TAO),Reaction(channel,Model.TAR)]
-		elif channel.state == 'resting':
-			self.reactions = [Reaction(channel,Model.TRA),Reaction(channel,Model.TRI)]
-		elif channel.state == 'inhibited':
-			self.reactions = [Reaction(channel,Model.TIR),Reaction(channel,Model.TIO)]
-		raise Exception("Invalid state: " + self.state)
-	
-	# sum f over all reactions
-	def f(self,t):
-		return self.reactions[0].f(t) + self.reactions[1].f(t);
-	
-	# probability density for any reaction, i.e. sum over all probability densities
-	def rho(self):
-		return self.reactions[0].rho(t) + self.reactions[1].rho(t);		
-		
-	def evolve(self,tau):
-		self.reactions[0].evolve(tau);
-		self.reactions[1].evolve(tau);
-		
-class Channel(object):	
-	
-	k01 = 0.0162      # 1/(microM   ms)
-	k12 = 0.027       # 1/(microM^2 ms) 
-	k23 = 2.1651E-4   # 1/(microM^3 ms)
-	k34 = 1.0         # 1/(microM^4 ms)
-	k45 = 3.5935E-8   # 1/(microM^5 ms)
-
-	tauO = 30         # ms
-
-	k01h = 1.4127E-3  # 1/(microM   ms)
-	k12h = 1.0        # 1/(microM^2 ms)
-	k23h = 1.0        # 1/(microM^3 ms)
-	k34h = 1.0        # 1/(microM^4 ms)
-	k45h = 5.6297E-7  # 1/(microM^5 ms)
-
-	CA = 0.484        # microM
-	CO = 0.238        # microM
-	CI = 6.5          # microM
-				
 	def __init__(self, state, calcium, transition_callbacks = []):
 		self.state = state
 		self.transition_callbacks = transition_callbacks
@@ -166,116 +29,71 @@ class Channel(object):
 		
 		# integration limit
 		self.xi = numpy.random.uniform()
-	
-	# return a list of propensity objects describing the propensities for the different transitions
-	def reactions(self):
-		return self.__reactions
-		
-	# return the history of calcium evolution since the last transition
-	def calcium(self,t):
-		return self.__calcium(t)
-		
-	def lasteventtime(self):
-		return self.__lasteventtime
-		
-	# perform a random transition according to propensities governed by the given calcium level
-	# this is supposed to be a private method...
-	def transition(self, time):
-		# pick random uniform number
-		u  = numpy.random.rand(1)[0]
-		
-		#store old state for the callback
-		oldstate = self.state
-		
-		if self.state == 'open':
-			p1 = 1000. / Model.TOI(self.calcium(time))
-			p2 = 1000. / Model.TOA(self.calcium(time))
-			if u * (p1+p2) <= p1:
-				self.state = 'inhibited'
-			else:
-				self.state = 'active'				
-		elif self.state == 'active':
-			p1 = 1000. / Model.TAO(self.calcium(time))
-			p2 = 1000. / Model.TAR(self.calcium(time))
-			if u * (p1+p2) <= p1:
-				self.state = 'open'
-			else:
-				self.state = 'resting'				
-		elif self.state == 'resting':
-			p1 = 1000. / Model.TRA(self.calcium(time))
-			p2 = 1000. / Model.TRI(self.calcium(time))
-			if u * (p1+p2) <= p1:
-				self.state = 'active'
-			else:
-				self.state = 'inhibited'			
-		elif self.state == 'inhibited':
-			p1 = 1000. / Model.TIR(self.calcium(time))
-			p2 = 1000. / Model.TIO(self.calcium(time))
-			#~ print 'p1',p1,'p2',p2,'u*(p1+p2)',u*(p1+p2)
-			if u * (p1+p2) <= p1:
-				self.state = 'resting'
-			else:
-				self.state = 'open'					
-		else:
-			raise Exception("Invalid state: " + self.state)
-		
-		# call all callbacks
-		for callback in self.transition_callbacks:
-			callback(time,oldstate,self.state)
-		
-	def addTransitionCallback(self,callback):
-		self.transition_callbacks.append(callback)		
-	
-	# return the value for the cumulative probability density function of any reaction for time t
-	def cdf(self,t):
-		fi = self.__cdf.frame(t)
-		ti = self.__cdf.frames[fi]
-		di = self.__cdf.data[fi];
-		return di + scipy.integrate.quad(self.__reactions.rho,ti,t)		
-		
-	# revert everything to state at time t, this will be necessary for multichannel stuff
-	def revert(self,t):
-		# revert the state
-		f = self.__history.frame(t)
-		self.state = self.__hisory.data[f]
-		# revert the cdf history
-		f = self.__cdf.frame(t)
-		self.__cdf.frames = self.__cdf.frames[0;f] + [t]
-		self.__cdf.data   = self.__cdf.data[0;f]   + [self.__cdf.data[f] + scipy.integrate.quad(self.cdf,self.__cdf.frames[f],t)]
-		assert(self.__cdf.data[-1] < 1.)
-		# revert the reaction history
 
-	# drive a set of channels by an external signal
-	@staticmethod
-	def applytimestep(channels, calcium, t, tau):
-		told = self.__calcium.frames[-1]
-		# update calcium history
-		self.__calcium.data   = self.__calcium.data   + [calcium]
-		self.__calcium.frames = self.__calcium.frames + [tnew]
+
+# a group of stochastic channels, the group object provides functionality for callback and stochastic channel evolution
+class StochasticChannelGroup(object):
+	
+	def __init__(self, channels):
+		self.channels = channels
+		self.tstoch   = 0
 		
-		# integrate propensities for time step
-		increment = scipy.integrate.quad(self.cdf,told,tnew)
-		
-		# check if there will be a transition within this time step
-		while (self.cdf(told) + increment >= self.xi):
-			# nsolve for exact transition time
-			ttransition = 
+	# drive the set of channels by an external environment
+	def applytimestep(self, environment, t, tau):
+
+		while(tstoch < t + tau):
+      
+			# always recalculate a0, since otherwise a possible changes of the propensities due to
+			# changes of the calcium levels would be neglected in the stochastic time development
+
+			# time difference between end of deterministic time step and stochastic time
+			dt = t + tau - tstoch
+			# mean time between stochastic time and end of deterministic time step
+			tm = tstoch + 0.5*dt
+
+			# for debug reasons...
+			assert(t0 < tm && tm < t0+tau);
+			if(not(t0 < tm and tm < t0+tau)) raise "Invalid time step!";
+
+			# get propensities for mean time
+			Propensities propensities(channelsetup, simulation, tm);
+			i = propensities.total();
+			// no stochastic event in time step
+			if(g + dt*propensities.total() < xi):
+				# increase accumulated "propensity" weighted with the time difference
+				g = g  + dt*propensities.total();
+
+				# update stochastic time
+				tstoch = t0 + tau;
+				#            std::cout << "g=" << g << " tstoch="<< tstoch<< " xi=" << xi << " prop=" << propensities.total() << std::endl;
+				# return approximation for next event time
+				return (xi-g)/propensities.transition();
 			
-			# perform the transition
-			self.transition(ttransition)
-						
-			#reset integration limit and pick new one
-			self.xi = numpy.random.uniform()
-			self.__lasteventtime = time
+			# stochastic event in time step
+			else:
 			
-			#reset Reaction Propensities, propability densities, ...
-			self.__reactions = Reactions(self)
+				# compute event time according to g + dt*a0 == xi
+				tevent = (xi-g)/propensities.total() + tstoch;
+				# determine next random number
+				xi          = -std::log(getNonZeroRandomNumber());
+				# reset accumulated propensities
+				g           = 0.;
+				# update stochastic time
+				tstoch      = tevent;
+
+				# recalculate propensities for event time
+				Propensities propensities(channelsetup, simulation, tevent);
+
+				# determine type and channel for next event
+				std::pair<unsigned, Transition> transition = propensities.pick();
+
+				# extract the channel model
+				typename Traits::Model& model = channelsetup.getChannel(transition.first).getModel();
+
+				# do the channel transition
+				model.transition(tevent, transition.second);
 			
-			#return event information
-			return (time,oldstate,self.state)
-		
-		
-		# increase accumulated propensities
+		return (xi-g)/ Propensities(channelsetup, simulation, tstoch).transition();
 		
 	# drive this channel by an external signal (which itself might again depend on the modelstate)
 	def drive(self, timeline, t0, tend, callbacks = []):
