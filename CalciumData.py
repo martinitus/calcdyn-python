@@ -318,7 +318,7 @@ class RankData(SpatialData):
 		coordfile = open(RankData.coordfile(path,dataset,rank))					
 		self.nodes = numpy.fromfile(coordfile, dtype=numpy.float32)
 		
-		D2 = False
+		D2 = True
 		
 		if(D2):
 			#print "using 2D dataset", self.nodes.size
