@@ -108,7 +108,7 @@ class DataSet(object):
 			self.frames = self.erdomain.frames;		
 		else:
 			self.frames = self.cydomain.frames;	
-			
+		
 		self.nodes = self.cydomain.nodes
 		# permute data of erdomain to match cydomain node distribution
 		'''permutation = numpy.zeros(self.erdomain.nodes.shape[0],dtype = numpy.int)
@@ -318,7 +318,7 @@ class RankData(SpatialData):
 		coordfile = open(RankData.coordfile(path,dataset,rank))					
 		self.nodes = numpy.fromfile(coordfile, dtype=numpy.float32)
 		
-		D2 = True
+		D2 = False
 		
 		if(D2):
 			#print "using 2D dataset", self.nodes.size
