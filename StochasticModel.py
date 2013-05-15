@@ -21,10 +21,10 @@ class Reagent(object):
 		raise NotImplementedError("Please Implement this method")
 
 # a group of stochastic channels, the group object provides functionality for callback and stochastic channel evolution
-class StochasticChannelGroup(object):
+class ChannelGroup(object):
 	
 	# environment has to provide the determinisitic evolution of all the variables the stochastic implementation depends on
-	def __init__(self, environment, channels, transition_callbacks = [], xi = None):
+	def __init__(self, channels, transition_callbacks = [], xi = None, environment = None):
 		self.callbacks   = transition_callbacks
 		self.environment = environment
 		self.channels    = channels
@@ -66,11 +66,12 @@ class StochasticChannelGroup(object):
 		
 	# drive the set of channels by an external environment
 	def applytimestep(self, t, tau):
+        assert(self.environment)
 		assert(self.tstoch - t <= 1E-8)
 		
 		while(self.tstoch < t + tau):
 			
-			# update the reaction set
+			# update set of possible reactions
 			self.reactions = [reaction for channel in self.channels for reaction in channel.reactions(self.environment)]
       
 			# no stochastic event in time step
