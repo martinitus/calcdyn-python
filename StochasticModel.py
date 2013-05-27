@@ -66,19 +66,19 @@ class ChannelGroup(object):
 		
 	# drive the set of channels by an external environment
 	def applytimestep(self, t, tau):
-        assert(self.environment)
+		assert(self.environment)
 		assert(self.tstoch - t <= 1E-8)
 		
 		while(self.tstoch < t + tau):
 			
 			# update set of possible reactions
 			self.reactions = [reaction for channel in self.channels for reaction in channel.reactions(self.environment)]
-      
+            
 			# no stochastic event in time step
 			if(self.cdf(t+tau) < self.xi):
 				# update accumulation variables and stochastic time
 				self.f0     = self.f(t+tau)
-				#self.cdf0   = self.cdf(t+tau)								
+				#self.cdf0   = self.cdf(t+tau)
 				self.tstoch = t + tau;
 				
 				# return approximation for next event time
@@ -86,7 +86,7 @@ class ChannelGroup(object):
 				return
 			
 			# stochastic event in time step
-			else:				
+			else:
 				# compute event time according to self.cdf(tevent) == self.xi
 				tevent = scipy.optimize.brentq(lambda t: self.cdf(t)-self.xi,self.tstoch,t+tau)
 				assert(tevent < t+tau)
