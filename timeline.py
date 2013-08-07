@@ -1,4 +1,5 @@
-import scipy.interpolate
+#import scipy.interpolate
+import scipy
 import StringIO
 import matplotlib.figure
 import matplotlib.pyplot as plt
@@ -25,11 +26,16 @@ class TimeLine(object):
 		self.maxframe = self.frame(self.tmax())
 		assert(frames[0]<=self.t0)
 		assert(self.tend     <=frames[-1])
-		self.interp = scipy.interpolate.interp1d(self.frames,self.data,copy = False,kind = interpolationorder)
+		#self.interp = scipy.interpolate.interp1d(self.frames,self.data,copy = False,kind = interpolationorder)
 		
 		
 	def __call__(self,t):
-		return self.interp(t)
+		try:
+			return scipy.interp([t], self.frames,self.data, left=None, right=None)[0]
+			#return self.interp(t)
+		except Exception as detail:
+			print detail,t
+			#raise detail
 			
 	def subrange(self, subrange):
 		return TimeLine(self.frames,self.data,t0 = subrange[0],tend = subrange[1],desc =self.desc, ylabel = self.ylabel, yunit = self.yunit)
@@ -52,7 +58,7 @@ class TimeLine(object):
 		#output.seek(0)
 		#return output.getvalue()
 		
-	def plot(self, axes, trange = None, yrange = None,c='black',lw = 0.5,yscale = 'linear'):
+	def plot(self, axes, trange = None, yrange = None,c='black',lw = 1,yscale = 'linear'):
 		trange = [self.tmin(),self.tmax()] if trange == None else trange
 	
 		

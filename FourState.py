@@ -7,44 +7,23 @@ import scipy.optimize
 import math
 import matplotlib.figure
 import StringIO
+import matplotlib.pyplot as plt
 
-# Default plot for StateTimeLine
-class StateTimeLine(matplotlib.figure.Figure):	
-	def __init__(self, data, figsize=None, dpi=None, facecolor=None, edgecolor=None, frameon=True):
-		super(StateTimeLine, self).__init__(figsize, dpi, facecolor, edgecolor, frameon)
-		self.data  = data
-			
-		ax = self.add_subplot(1,1,1)
-		ax.grid(True)
-		ax.axhline(0, color='black', lw=2)
-		ax.axis([1, self.data.tmax(), 0, 11])
-		ax.set_ylabel('channels')
-		ax.set_xlabel('time [s]')
-	
-		#~ Plot the state evolution to axes object	
-		a,= ax.plot(data.times(),data.active(),   c='green',drawstyle='steps-post',lw=2)
-		o,= ax.plot(data.times(),data.open(),     c='red',  drawstyle='steps-post',lw=2)
-		i,= ax.plot(data.times(),data.inhibited(),c='cyan', drawstyle='steps-post',lw=2)	
-		r,= ax.plot(data.times(),data.resting(),  c='blue', drawstyle='steps-post',lw=2)
-
-		ax.legend([r, a, o, i], ["resting","active","open","inhibited"], loc=2)
-		matplotlib.backends.backend_agg.FigureCanvasAgg(self)
-		
-
+from IPython.core.pylabtools import print_figure
 
 #~ At the moment the data in the csv is arranged as follows:
 #~ time | channel id | cluster id | transition | open channels | open clusters | channels x state | channels x calciumlevel
 
-#~ internally we drop some columns...
-#~ time | {channel states} | {channel calciumlevels}
-
-
-
 class Data(ModelData.Data):
 	def __init__(self, path):
-		#~  load csv file and set up channel locations in base class
-		super(Data, self).__init__(path)
 		
+		# define the set of data types to import from the csv
+		types = [('t', float), ('chid', int), ('clid', int), ('tr','>S18'), ('noch',int),('nocl',int,1), ('states',int,(10)), ('calcium',float,(10))]
+		
+		#~  load csv file and set up channel locations in base class
+		super(Data, self).__init__(path, types)
+		
+		# define a set of conditions making up the state
 		self.states = {}
 		self.states['resting']   = 0
 		self.states['active']    = 1
@@ -53,26 +32,36 @@ class Data(ModelData.Data):
 		#~ print self.channels()
 
 	def resting(self):
-		return (self.data[:,1:1+self.channelcount()] == self.states['resting']).sum(1)
+		return self.observe(lambda x: (x['states'] == self.states['resting']).sum(),desc = 'resting')
 		
 	def active(self):
-		return (self.data[:,1:1+self.channelcount()] == self.states['active']).sum(1)
+		return self.observe(lambda x: (x['states'] == self.states['active']).sum(),desc = 'active')
 		
 	def inhibited(self):
-		return (self.data[:,1:1+self.channelcount()] == self.states['inhibited']).sum(1)
+		return self.observe(lambda x: (x['states'] == self.states['inhibited']).sum(),desc = 'inhibited')
 				
 	def open(self):
-		return (self.data[:,1:1+self.channelcount()] == self.states['open']).sum(1)	
-	
-	def closed(self):
-		return self.channelcount() - self.open();
+		return self.observe(lambda x: (x['states'] == self.states['open']).sum(),desc = 'open')
 		
 	def _repr_svg_(self):
-		foo = StateTimeLine(self)
-		imgdata = StringIO.StringIO()
-		foo.savefig(imgdata, format='svg')
-		imgdata.seek(0)  # rewind the data
-		return imgdata.getvalue()
+		fig,ax=plt.subplots(figsize=(10,3))
+		
+		ax.grid(True)
+		ax.axhline(0, color='black', lw=2)
+		ax.set_ylabel('channels')
+		ax.set_xlabel('time [s]')
+	
+		#~ Plot the state evolution to axes object	
+		self.active().plot(   ax,  c='green',lw=2)
+		self.open().plot(     ax,  c='red',  lw=2)
+		self.inhibited().plot(ax,  c='cyan', lw=2)
+		self.resting().plot(  ax,  c='blue', lw=2)
+		ax.legend(loc=2)
+		
+		data = print_figure(fig,'svg')
+		plt.close(fig)
+		return data.decode('utf-8')
+
 	
 	#~ return coordinates of channels in given state for given time
 	def locations(self, time, state = 'open'):

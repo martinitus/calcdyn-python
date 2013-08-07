@@ -1,6 +1,8 @@
 import StochasticModel
-import numpy
+import numpy as np
+import scipy
 import math
+import timeline
 
 
 '''RyRModel::usage = "
@@ -47,6 +49,19 @@ def topen(cy,er):
 def popen(cy,er):
     return topen(cy,er)/(topen(cy,er)+tclose(cy,er));
     
+def a(cy,er,N=1.):
+    return lambda t: N*kopen(cy(t),er(t))
+    
+def rho(N,cy,er,frames):
+    aa   = a(cy,er,N)
+    rho = lambda t: aa(t)*np.exp(-scipy.integrate.quad(aa,0,t)[0])
+    return timeline.TimeLine(frames,map(rho,frames),yunit = '1/s',ylabel='\rho$')
+    
+def cdf(N,cy,er,frames):
+    aa   = a(cy,er,N)
+    P = lambda t: 1. - np.exp(-scipy.integrate.quad(aa,0,t)[0])
+    return timeline.TimeLine(frames,map(P,frames),ylabel='cdf')
+#def rho():
     
 '''
 Off[NIntegrate::nlim]

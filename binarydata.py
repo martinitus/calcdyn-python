@@ -3,97 +3,24 @@ import numpy
 import scipy.spatial
 import scipy.interpolate.interpnd
 import scipy.integrate
-import TimeLine
+import timeline
 
-class ERDomain(object):
-	def __init__(self, path):
-		self.calcium = None
-		self.debug   = None
-		
-		self.frames = None
-		self.nodes  = None
-		
-		try:
-			self.calcium = ParallelData(path,'er_calcium')
-			self.frames = self.calcium.frames;
-			self.nodes  = self.calcium.nodes;			
-		except Exception, e:
-			print e.message			
-		try:
-			self.debug = ParallelData(path,'er_debug')
-			assert((self.frames == self.debug.frames).all())
-			assert((self.nodes == self.debug.nodes).all())		
-		except:
-			pass
-		
-	
-	def select(self,xmin,xmax,ymin,ymax):
-		if(self.calcium != None):
-			self.calcium.select(xmin,xmax,ymin,ymax)
-		if(self.debug != None):
-			self.debug.select(xmin,xmax,ymin,ymax)
+class Domain(dict):
+	def __init__(self, path, name, components = ['calcium']):
+		super(Domain, self).__init__()
+		# the name of the domain
+		self.name       = name		
+		# create empty dictionary
+		#self.components = {}
+		# fill the dictionary with the corresponding data sets
+		for component in components:
+			self[component] = NewDataFormat(path,self.name + '.' + component)
 			
-	def __repr__(self):
-		return '[' + ('calcium' if self.calcium != None else '') + ',' + ('debug' if self.debug != None else '') + ']'
-		
-class CYDomain(object):
-	def __init__(self, path):
-		self.calcium    = None
-		self.debug      = None
-		self.stationary = None
-		self.mobile     = None
-		self.dye        = None
-		
-		try:
-			self.calcium = ParallelData(path,'cy_calcium')
-			self.frames = self.calcium.frames;
-			self.nodes  = self.calcium.nodes;			
-		except Exception, e:
-			print e.message			
-		try:
-			self.mobile = ParallelData(path,'mobile')
-			assert((self.frames == self.mobile.frames).all())
-			assert((self.nodes == self.mobile.nodes).all())			
-		except Exception, e:
-			print e.message			
-		try:
-			self.dye = ParallelData(path,'dye')
-			assert((self.frames == self.dye.frames).all())
-			assert((self.nodes == self.dye.nodes).all())			
-		except Exception, e: 
-			print e.message			
-		try:
-			self.stationary = ParallelData(path,'stationary')
-			assert((self.frames == self.stationary.frames).all())
-			assert((self.nodes == self.stationary.nodes).all())			
-		except Exception, e: 
-			print e.message			
-		try:
-			self.debug = ParallelData(path,'cy_debug')	
-			assert((self.frames == self.debug.frames).all())
-			assert((self.nodes == self.debug.nodes).all())					
-			#print 'Found debug informations for cytosolic membrane calcium'
-		except Exception:			
-			pass
-		
-		
-	def select(self,xmin,xmax,ymin,ymax):
-		if(self.calcium != None):
-			self.calcium.select(xmin,xmax,ymin,ymax)
-			self.nodes = self.calcium.nodes
-		if(self.debug != None):
-			self.debug.select(xmin,xmax,ymin,ymax)
-		if(self.mobile != None):
-			self.mobile.select(xmin,xmax,ymin,ymax)
-		if(self.stationary != None):
-			self.stationary.select(xmin,xmax,ymin,ymax)
-		if(self.dye != None):
-			self.dye.select(xmin,xmax,ymin,ymax)
+	def components(self):
+		return self.keys();
 			
-	def __repr__(self):
-		return '[' + ('calcium' if self.calcium != None else '') + ',' + ('mobile' if self.mobile != None else '') +  \
-			   ',' + ('stationary' if self.stationary != None else '')  + ',' + ('dye' if self.dye != None else '') + \
-			   ',' + ('debug' if self.debug != None else '') + ']'
+	#def __repr__(self):
+	#	return self.components.__repr__()
 
 class DataSet(object):
 	def __init__(self,path):
@@ -224,18 +151,24 @@ class SpatialData(object):
 		#~ print repr(result)
 		return result
 		
-		
-	def spatialinterpolation(self,x,y,firstframe,lastframe):
-		warnings.warn("spatialinterpolation is derprecated, use __call__ instead!", DeprecationWarning )
-		datas = self.data.swapaxes(0,1)
-		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes,datas[:,firstframe:lastframe+1],fill_value = fill_value)
-		
 	# return a callable object representing a time interpolation for the given coordinates
-	def timeline(self,x,y):
+	def timeline(self,*args):
+		if len(args) == 1:
+			x=args[0][0]
+			y=args[0][1]
+		elif len(args)==2:
+			x=args[0]
+			y=args[1]
+		else:
+			raise Exception("dondt know what to do with:" + str(args))
 		datas = self.data.swapaxes(0,1)
 		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes, datas[:,:])				
 		interpolation = interpolator([[x,y]])[0]
-		return TimeLine.TimeLine(self.frames,interpolation,self.tmin(),self.tmax())
+		return timeline.TimeLine(self.frames,interpolation,ylabel=self.dataset,yunit='$\mu$M')
+	
+	def snapshot(self,t):
+		#TODO return spatial data interpolator for time t
+		return None
 	
 	def write(self, path):
 		# write coordinate file
@@ -308,9 +241,35 @@ class SpatialData(object):
 		return zi
 		
 	def spatialextend(self):
-		return [[self.nodes[:,0].min(),self.nodes[:,0].max()],[self.nodes[:,1].min(),self.nodes[:,1].max()]]	
+		return [[self.nodes[:,0].min(),self.nodes[:,0].max()],[self.nodes[:,1].min(),self.nodes[:,1].max()]]
+		
+		
+class NewDataFormat(SpatialData):
+	def __init__(self,path,dataset):
+		super(NewDataFormat, self).__init__(dataset)	
+		
+		filename = path + dataset + ".bin"
+		# read the coordinates				
+		coordfile = open(path+dataset+".coordinates.bin")					
+		self.nodes = numpy.fromfile(coordfile, dtype=numpy.float32)
+		print self.nodes.shape
+		#print "using 3D dataset", self.nodes.size
+		self.nodes = numpy.reshape(self.nodes,(self.nodes.size / 3,3))
+		self.nodes = self.nodes[:,0:2]
+		
+		floats_in_file   = os.path.getsize(filename)/4
+		
+		framesize = self.nodes.shape[0] +1
+		
+		self.data = numpy.memmap(filename,dtype=numpy.float32,shape=(floats_in_file/framesize,framesize))
+		#extract frame time colums
+		self.frames = self.data[:,0]
+		# drop frame time column
+		self.data = self.data[:,1:]
 
 class RankData(SpatialData):
+	two_dimensions = False
+	
 	def __init__(self, path, dataset, rank, verbose = False):
 		super(RankData, self).__init__(dataset)
 		
@@ -318,9 +277,7 @@ class RankData(SpatialData):
 		coordfile = open(RankData.coordfile(path,dataset,rank))					
 		self.nodes = numpy.fromfile(coordfile, dtype=numpy.float32)
 		
-		D2 = False
-		
-		if(D2):
+		if(RankData.two_dimensions):
 			#print "using 2D dataset", self.nodes.size
 			self.nodes = numpy.reshape(self.nodes,(self.nodes.size / 2,2))			
 		else:
@@ -328,7 +285,7 @@ class RankData(SpatialData):
 			self.nodes = numpy.reshape(self.nodes,(self.nodes.size / 3,3))
 			self.nodes = self.nodes[:,0:2]
 			
-			
+
 		# read the data file in 10mb junks
 		datafile = open(RankData.datafile(path,dataset,rank))
 		floats_per_block = 10*1024*1024/4
@@ -368,67 +325,64 @@ class RankData(SpatialData):
 		self.data = self.data[:,1:]
 		if verbose:
 			print '   t=[{start:.8f}, {end:.8f}], {frames} frames {flag}'.format(start=float(self.frames[0]), end = float(self.frames[-1]), frames = self.frames.size, flag = foo)
-	
+			
+			
 	@staticmethod
 	def coordfile(path, dataset, rank):
-		if (os.path.exists(os.path.join(path,  dataset + '_coordinates_rank_' + str(rank) + '.bin'))):
-			return os.path.join(path,  dataset + '_coordinates_rank_' + str(rank) + '.bin')
-		if rank == 0:			
-			if(os.path.exists(os.path.join(path,  dataset + '_coordinates.bin'))):
-				return os.path.join(path,  dataset + '_coordinates.bin')
-		if os.path.exists(os.path.join(path,  'coordinates.bin')):
-			print 'Warning: Deteceted old nameing sheme coordinate file...'
-			return os.path.join(path,  'coordinates.bin')
+		if (os.path.exists(os.path.join(path,  dataset + '.coordinates.' + str(rank) + '.bin'))):
+			return os.path.join(path,  dataset + '.coordinates.' + str(rank) + '.bin')
+		print 'Warning: Could not locate: ' + os.path.join(path,  dataset + '.coordinates.' + str(rank) + '.bin') + ' (old nameing sheme?)'
 		return None
 	
 	@staticmethod
 	def datafile(path, dataset, rank):
-		if (os.path.exists(os.path.join(path,  dataset + '_rank_' + str(rank) + '.bin'))):
-			return os.path.join(path,  dataset + '_rank_' + str(rank) + '.bin')
-		if rank == 0:			
-			if(os.path.exists(os.path.join(path,  dataset + '.bin'))):
-				return os.path.join(path,  dataset + '.bin')
+		if (os.path.exists(os.path.join(path,  dataset + '.' + str(rank) + '.bin'))):
+			return os.path.join(path,  dataset + '.' + str(rank) + '.bin')
+		print 'Warning: Could not locate data file for ' + dataset + '... (old nameing sheme?)'
 		return None
+		
+	@staticmethod		
+	def exists(path, dataset, rank):
+		return os.path.exists(os.path.join(path,  dataset + '.coordinates.' + str(rank) + '.bin')) and os.path.exists(os.path.join(path,  dataset + '.' + str(rank) + '.bin'))
 
 class ParallelData(SpatialData):
+	new_file_format = True
 	def __init__(self,path,dataset):
 		super(ParallelData, self).__init__(dataset)	
-		#print 'Loading: ', path, dataset
-		ranks = self.loadRankFiles(path,dataset)
 		
-		# combine the positions
-		self.nodes = numpy.concatenate(list(rank.nodes for rank in ranks))		
-		
-		# get lowest frame number from rank files
-		f = min(list(rank.frames.size for rank in ranks))
-		self.frames = ranks[0].frames[0:f]
+		if ParallelData.new_file_format:
+			floats_in_file   = os.path.getsize(RankData.datafile(path,dataset,rank))/4
+			self.data = numpy.memmap(RankData.datafile(path,dataset,rank),dtype=numpy.float32,shape=(floats_in_file/self.nodes.shape[0],self.nodes.shape[0]))
+			#extract frame time colums
+			self.frames = self.data[:,0]
+			# drop frame time column
+			self.data = self.data[:,1:]
+		else:
+			#print 'Loading: ', path, dataset
+			ranks = []		
+			while RankData.exists(path,dataset,len(ranks)):			
+				ranks.append(RankData(path, dataset, len(ranks)))	
 			
-		self.data = numpy.zeros((f,self.nodes.shape[0]),dtype=numpy.float32)
-		
-		# merge all data in one large array
-		startnode = 0
-		for rank in ranks:
-			self.data[:,startnode:startnode+rank.nodes.shape[0]] = rank.data[0:self.frames.size,:]
-			startnode = startnode + rank.nodes.shape[0]
+					
+			if len(ranks) == 0:
+				raise Exception('Cannot find ' + dataset + ' files in ' + os.path.relpath(path))
 			
-		#print 'Found', self.nodes, 'nodes and', self.frames, 'frames (t=[',self.time(0),',',self.time(self.frames-1),'])'
-		
-	def loadRankFiles(self,path,dataset):
-		ranks = []
-		
-		rank = 0
-		while True:
-			have_coordfile = RankData.coordfile(path,dataset,rank) != None
-			have_datafile  = RankData.datafile(path,dataset,rank) != None
-			if not have_datafile or not have_coordfile:
-				break
-			ranks.append(RankData(path, dataset, rank))	
-			rank += 1
+			# combine the positions
+			self.nodes = numpy.concatenate(list(rank.nodes for rank in ranks))		
+			
+			# get lowest frame number from rank files
+			f = min(list(rank.frames.size for rank in ranks))
+			self.frames = ranks[0].frames[0:f]
 				
-		if len(ranks) == 0:
-			raise Exception('Cannot find ' + dataset + ' files in ' + os.path.relpath(path))
-		return ranks
-		
+			self.data = numpy.zeros((f,self.nodes.shape[0]),dtype=numpy.float32)
+			
+			# merge all data in one large array
+			startnode = 0
+			for rank in ranks:
+				self.data[:,startnode:startnode+rank.nodes.shape[0]] = rank.data[0:self.frames.size,:]
+				startnode = startnode + rank.nodes.shape[0]
+				
+			#print 'Found', self.nodes, 'nodes and', self.frames, 'frames (t=[',self.time(0),',',self.time(self.frames-1),'])'		
 
 class CalciumData:
 	def __init__(self, path):
