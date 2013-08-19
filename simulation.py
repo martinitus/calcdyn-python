@@ -50,7 +50,8 @@ class Channel(object):
 			frames  = numpy.insert(frames,0,initialtime,axis = 0)
 			frames  = numpy.append(frames,  finaltime)
 			
-			self.__state = TimeLine(frames,states,interpolationorder = 'zero')
+			#self.__state = TimeLine(frames,states,interpolationorder = 'zero')
+			self.__state = (frames,states)
 		return self.__state
 
 	def radius(self):
@@ -66,7 +67,8 @@ class Channel(object):
 		return self.__cluster
 		
 	def open(self,t):
-		return self.__eventdata.state('open')['condition'](self.state().at(t))
+		tl = TimeLine(*self.state(),interpolationorder= 'zero')
+		return self.__eventdata.state('open')['condition'](tl.at(t))
 		
 	def fluxcoefficient(self):
 		if self.__simulation.config.has_option('membrane','pc'):

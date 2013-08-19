@@ -8,7 +8,9 @@ import binarydata
 from matplotlib.patches import Circle
 
 class Overview(object):	
-	def __init__(self, dataset):
+	def __init__(self, dataset,downsample = 10):
+		
+		self.downsample = downsample
 		self.data   = dataset
 		
 		self.spatial_data = dataset.domain('cytosol')['calcium']
@@ -119,7 +121,7 @@ class Overview(object):
 			self.timelineplot.pop(0).remove()
 			
 		#self.timeline.clear()
-		self.timelineplot = self.timeline.plot(self.spatial_data.frames,self.spatial_data.data[:,self.node],c='black',lw=2)
+		self.timelineplot = self.timeline.plot(self.spatial_data.frames[::self.downsample],self.spatial_data.data[::self.downsample,self.node],c='black',lw=2)
 
 	# spatial calcium plot
 	def update_spatial(self, axes = None):
