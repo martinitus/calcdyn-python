@@ -22,52 +22,6 @@ class Domain(dict):
 	#def __repr__(self):
 	#	return self.components.__repr__()
 
-class DataSet(object):
-	def __init__(self,path):
-		print 'Loading spatial data from', path
-		self.erdomain = ERDomain(path)	
-		self.cydomain = CYDomain(path)
-		print self.erdomain, self.cydomain
-		#print self.erdomain.frames
-		#print self.cydomain.frames
-		#assert((self.erdomain.frames == self.cydomain.frames).all())
-		if(self.erdomain.frames.size<self.cydomain.frames.size):
-			self.frames = self.erdomain.frames;		
-		else:
-			self.frames = self.cydomain.frames;	
-		
-		self.nodes = self.cydomain.nodes
-		# permute data of erdomain to match cydomain node distribution
-		'''permutation = numpy.zeros(self.erdomain.nodes.shape[0],dtype = numpy.int)
-		i=0
-		for node in self.erdomain.nodes:    
-			permutation[i] = numpy.where(numpy.logical_and(self.cydomain.nodes[:,0] == node[0],self.cydomain.nodes[:,1] == node[1]))[0][0]
-			i = i+1
-		self.erdomain.nodes         = self.cydomain.nodes
-		self.erdomain.calcium.nodes = self.cydomain.nodes
-		self.erdomain.debug.nodes   = self.cydomain.nodes
-		self.erdomain.calcium.data  = self.erdomain.calcium.data[:,permutation]
-		self.erdomain.debug.data    = self.erdomain.debug.data[:,permutation]
-	'''
-	def select(self,xmin,xmax,ymin,ymax):
-		self.erdomain.select(xmin,xmax,ymin,ymax)
-		self.cydomain.select(xmin,xmax,ymin,ymax)
-	
-	def tmax(self):
-		return self.frames[-1];
-		
-	def tmin(self):
-		return self.frames[0];
-		
-	'''
-	interpolate all contained data for x y coordinate
-	'''
-	def timeline(self, x , y ):
-		datas = self.data.swapaxes(0,1)
-		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes, datas[:,:])				
-		interpolation = interpolator([[x,y]])[0]
-		return TimeLine.TimeLine(self.frames,interpolation,self.tmin(),self.tmax())
-		
 
 class SpatialData(object):
 	
@@ -166,9 +120,34 @@ class SpatialData(object):
 		interpolation = interpolator([[x,y]])[0]
 		return timeline.TimeLine(self.frames,interpolation,ylabel=self.dataset,yunit='$\mu$M')
 	
+		# return a callable object representing a time interpolation for the given coordinates
+	def evolution(self,*args):
+		if len(args) == 1:
+			x=args[0][0]
+			y=args[0][1]
+		elif len(args)==2:
+			x=args[0]
+			y=args[1]
+		else:
+			raise Exception("dondt know what to do with:" + str(args))
+		datas = self.data.swapaxes(0,1)
+		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes, datas[:,:])				
+		interpolation = interpolator([[x,y]])[0]
+		return self.frames,interpolation
+	
+	
+	# retrief a interpolator object for 2D slice at given time
 	def snapshot(self,t):
-		#TODO return spatial data interpolator for time t
-		return None
+		datas         = self.data.swapaxes(0,1)
+		
+		# create time domain interpolator
+		timeinterpol  = scipy.interpolate.interp1d(self.frames,datas,copy = False, fill_value = numpy.nan)
+		
+		# calculate scattered data values for time t
+		datat         = timeinterpol(t)
+		
+		#create interpolator for spatial coordinates	
+		return scipy.interpolate.LinearNDInterpolator(self.nodes, datat,fill_value = numpy.nan)		
 	
 	def write(self, path):
 		# write coordinate file
@@ -219,7 +198,15 @@ class SpatialData(object):
 		return self.frames[-1]	
 	
 	# return index of node closest to [x,y]
-	def node(self,x,y):
+	def node(self,*args):
+		if len(args) == 1:
+			x=args[0][0]
+			y=args[0][1]
+		elif len(args)==2:
+			x=args[0]
+			y=args[1]
+		else:
+			raise Exception("dondt know what to do with:" + str(args))
 		n = 0
 		mn = 0
 		mindist = 9E30
@@ -241,7 +228,11 @@ class SpatialData(object):
 		return zi
 		
 	def spatialextend(self):
-		return [[self.nodes[:,0].min(),self.nodes[:,0].max()],[self.nodes[:,1].min(),self.nodes[:,1].max()]]
+		return numpy.array([self.nodes[:,0].min(),self.nodes[:,0].max(),self.nodes[:,1].min(),self.nodes[:,1].max()])
+	
+	def center(self):
+		e  = self.spatialextend()		
+		return numpy.array([e[1]/2,e[3]/2])
 		
 		
 class NewDataFormat(SpatialData):
@@ -252,7 +243,7 @@ class NewDataFormat(SpatialData):
 		# read the coordinates				
 		coordfile = open(path+dataset+".coordinates.bin")					
 		self.nodes = numpy.fromfile(coordfile, dtype=numpy.float32)
-		print self.nodes.shape
+		#print self.nodes.shape
 		#print "using 3D dataset", self.nodes.size
 		self.nodes = numpy.reshape(self.nodes,(self.nodes.size / 3,3))
 		self.nodes = self.nodes[:,0:2]

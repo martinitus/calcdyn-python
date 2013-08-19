@@ -3,7 +3,14 @@ import numpy as np
 import scipy
 import math
 import timeline
+import deterministic
 
+
+''' Since the RyRModel is essentially a two state model, take all settings from the deterministic two state model'''
+def types(channels):
+	return deterministic.types(channels)
+
+states = deterministic.states
 
 '''RyRModel::usage = "
 Definition of propensities a[t], CDF P[t] and probability density \[Rho][t]:
@@ -55,12 +62,12 @@ def a(cy,er,N=1.):
 def rho(N,cy,er,frames):
     aa   = a(cy,er,N)
     rho = lambda t: aa(t)*np.exp(-scipy.integrate.quad(aa,0,t)[0])
-    return timeline.TimeLine(frames,map(rho,frames),yunit = '1/s',ylabel='\rho$')
+    return frames,map(rho,frames)
     
 def cdf(N,cy,er,frames):
     aa   = a(cy,er,N)
     P = lambda t: 1. - np.exp(-scipy.integrate.quad(aa,0,t)[0])
-    return timeline.TimeLine(frames,map(P,frames),ylabel='cdf')
+    return frames,map(P,frames)
 #def rho():
     
 '''

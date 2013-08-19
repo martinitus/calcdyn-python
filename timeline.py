@@ -1,10 +1,12 @@
-#import scipy.interpolate
+
 import scipy
 import StringIO
 import matplotlib.figure
 import matplotlib.pyplot as plt
 import copy
 import numpy
+
+from scipy import interpolate
 
 from IPython.core.pylabtools import print_figure
 from IPython.display import Image, SVG, Math
@@ -26,16 +28,22 @@ class TimeLine(object):
 		self.maxframe = self.frame(self.tmax())
 		assert(frames[0]<=self.t0)
 		assert(self.tend     <=frames[-1])
-		#self.interp = scipy.interpolate.interp1d(self.frames,self.data,copy = False,kind = interpolationorder)
+		self.interp = interpolate.interp1d(self.frames,self.data,axis = 0, copy = False,kind = interpolationorder)
 		
 		
 	def __call__(self,t):
+		#try:
+		#	return scipy.interp([t], self.frames,self.data, left=None, right=None)[0]
+		return self.interp(t)
+		#except Exception as detail:
+		#	print detail,t
+		#raise detail
+		
+	def at(self,t):
 		try:
-			return scipy.interp([t], self.frames,self.data, left=None, right=None)[0]
-			#return self.interp(t)
-		except Exception as detail:
-			print detail,t
-			#raise detail
+			return self(t)
+		except:
+			return self.data[-1]
 			
 	def subrange(self, subrange):
 		return TimeLine(self.frames,self.data,t0 = subrange[0],tend = subrange[1],desc =self.desc, ylabel = self.ylabel, yunit = self.yunit)

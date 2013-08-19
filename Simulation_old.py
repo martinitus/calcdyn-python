@@ -4,6 +4,54 @@ import time
 import shutil
 import termcolor
 
+
+class DataSet(object):
+	def __init__(self,path):
+		print 'Loading spatial data from', path
+		self.erdomain = ERDomain(path)	
+		self.cydomain = CYDomain(path)
+		print self.erdomain, self.cydomain
+		#print self.erdomain.frames
+		#print self.cydomain.frames
+		#assert((self.erdomain.frames == self.cydomain.frames).all())
+		if(self.erdomain.frames.size<self.cydomain.frames.size):
+			self.frames = self.erdomain.frames;		
+		else:
+			self.frames = self.cydomain.frames;	
+		
+		self.nodes = self.cydomain.nodes
+		# permute data of erdomain to match cydomain node distribution
+		'''permutation = numpy.zeros(self.erdomain.nodes.shape[0],dtype = numpy.int)
+		i=0
+		for node in self.erdomain.nodes:    
+			permutation[i] = numpy.where(numpy.logical_and(self.cydomain.nodes[:,0] == node[0],self.cydomain.nodes[:,1] == node[1]))[0][0]
+			i = i+1
+		self.erdomain.nodes         = self.cydomain.nodes
+		self.erdomain.calcium.nodes = self.cydomain.nodes
+		self.erdomain.debug.nodes   = self.cydomain.nodes
+		self.erdomain.calcium.data  = self.erdomain.calcium.data[:,permutation]
+		self.erdomain.debug.data    = self.erdomain.debug.data[:,permutation]
+	'''
+	def select(self,xmin,xmax,ymin,ymax):
+		self.erdomain.select(xmin,xmax,ymin,ymax)
+		self.cydomain.select(xmin,xmax,ymin,ymax)
+	
+	def tmax(self):
+		return self.frames[-1];
+		
+	def tmin(self):
+		return self.frames[0];
+		
+	'''
+	interpolate all contained data for x y coordinate
+	'''
+	def timeline(self, x , y ):
+		datas = self.data.swapaxes(0,1)
+		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes, datas[:,:])				
+		interpolation = interpolator([[x,y]])[0]
+		return TimeLine.TimeLine(self.frames,interpolation,self.tmin(),self.tmax())
+		
+
 from CalciumData import *
 
 class EGTA:

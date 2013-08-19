@@ -3,24 +3,44 @@ import numpy
 import csv
 
 from timeline import TimeLine
+
+import dyk
+import deterministic
+import ryanodine
+
+channelmodels = {}
+channelmodels['DYKModel']      = dyk
+channelmodels['Deterministic'] = deterministic
+channelmodels['RyRModel']      = ryanodine
 		
 #~ At the moment the data in the csv is arranged as follows:
 #~ time | channel id | cluster id | transition | open channels | open clusters | {channel states} | {channel calciumlevels}
 
 class EventData(object):
-	def __init__(self, path, types, states, channels):
-			
-		self._data = numpy.genfromtxt(os.path.join(path, 'transitions.csv'),dtype = types)
+	
+	def __init__(self, path, modelname, channelcount,tend=None):
 		
+		self._model = channelmodels[modelname]
+	
+		self._states = self._model.states	
 		# the set of defined states must at least contain a definition of open and closed state
-		assert(states.has_key('open') and states.has_key('closed'))
-		self._states = states
+		assert(self._states.has_key('open'))
+		assert(self._states.has_key('closed'))
+				
+		self._data   = numpy.genfromtxt(os.path.join(path, 'transitions.csv'),dtype = self._model.types(channelcount))
 		
-		self._channels = channels
+		# TODO:  #insert initial and final state
+		''''states  = numpy.insert(states,0,data['states'][0][i],axis = 0)
+			states  = numpy.append(states,  [data['states'][-1][i]],axis = 0)
+			
+			frames  = numpy.insert(frames,0,data['t'][0],axis = 0)
+			frames  = numpy.append(frames,  data['t'][-1])'''
+		
+		self._channelcount = channelcount
 		
 				
 	def __repr__(self):
-		return "EventData (Channels: %d, Events: %d)" % (self._channels, self.events())
+		return "EventData (Channels: %d, Events: %d)" % (self._channelcount, self.events())
 		
 	def _repr_svg_(self):
 		return self.open()._repr_svg_()
@@ -29,7 +49,7 @@ class EventData(object):
 		return self.observe(lambda x: x['noch'],desc = 'open')
 		
 	def closedchannels(self):
-		return self.observe(lambda x: self._channels - x['noch'],desc = 'closed')
+		return self.observe(lambda x: self._channelcount - x['noch'],desc = 'closed')
 		
 	def openclusters(self):
 		return self.observe(lambda x: x['nocl'],desc = 'open')
@@ -109,14 +129,20 @@ class EventData(object):
 		f = self.frame(time)
 		return self.data[f,1+channel]
 		'''
+	# get the dictionary defining the given state	
+	def state(self,state):
+		return self._states[state]
 	
-	def states(self,frame = None, time = None):
+	# get the dictionary of predefined states
+	def states(self):
+		return self._states
+	'''def states(self,frame = None, time = None):
 		if frame != None:
 			assert(time == None)			
 		if time != None:
 			assert(frame == None)
 			frame = self.frame(time)			
-		return self._data[frame,1:1+self.channelcount()]
+		return self._data[frame,1:1+self.channelcount()]'''
 		
 	#~ return the smallest frame number past the given time	
 	def frame(self, time, fmin = 0, fmax = -1):
@@ -130,11 +156,11 @@ class EventData(object):
 			
 		f = fmin + (fmax-fmin)/2
 		#search in left hand side
-		if self._data[f,0] > time:
+		if self._data[f]['t'] > time:
 			#~ print 'lhs'
 			return self.frame(time,fmin,f)
 		#search in right hand side
-		if self._data[f,0] <= time:
+		if self._data[f]['t'] <= time:
 			#~ print 'rhs'
 			return self.frame(time,f,fmax)
 		

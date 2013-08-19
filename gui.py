@@ -2,6 +2,10 @@ import matplotlib.pyplot as plt
 import numpy
 import math
 import scipy.interpolate
+import sys, traceback
+import binarydata
+
+from matplotlib.patches import Circle
 
 class Overview(object):	
 	def __init__(self, dataset):
@@ -9,8 +13,8 @@ class Overview(object):
 		
 		self.spatial_data = dataset.domain('cytosol')['calcium']
 		
-		self.fig = plt.figure()
-		self.fig.subplots_adjust(left = 0.03, bottom = 0.01, right = 0.97, top = 0.97, wspace = 0.05, hspace = 0.05)
+		self.fig = plt.figure(self.data.path)
+		self.fig.subplots_adjust(left = 0.06, bottom = 0.04, right = 0.97, top = 0.97, wspace = 0.05, hspace = 0.05)
 
 		#~ the timeline upper left
 		self.states = self.fig.add_subplot(2,2,1)
@@ -43,32 +47,39 @@ class Overview(object):
 		
 		#~ the spatial calcium distribution lower left
 		self.spatial = self.fig.add_subplot(2,2,4)
-		self.spatial.axis([4800,5200,4800,5300])
+		self.spatial.axis(self.spatial_data.spatialextend())
 		self.spatial.grid(True)
 		self.spatial.set_title('spatial calcium')
 		
 		self.state_time = 0
 		self.frame_time = 0
-		self.node = self.spatial_data.node(5000,5000)
-		self.contourlevels=[0.001, 0.01, 0.1, 1, 2, 4, 8,16, 32, 64, 128, 256]
+		self.node = self.spatial_data.node(self.spatial_data.center())
+		#self.contourlevels=[0.001, 0.01, 0.1, 1, 2, 4, 8,16, 32, 64, 128, 256]
+		#self.contourlevels=[400,500,550,600,650,675]
 		
 		self.update_states()
 		self.update_stats()
 		self.update_timeline()
 		self.update_spatial()
 		
-		#~ self.fig.colorbar(self.contour, ax = self.spatial)
-		
+#~ self.fig.colorbar(self.contour, ax = self.spatial)
 		from matplotlib.ticker import LogLocator, LogFormatter 
 		l_f = LogFormatter(10, labelOnlyBase=False) 
-		cbar = plt.colorbar(self.contour, ax = self.spatial, ticks=self.contourlevels, format = l_f) 
+		self.cbar = plt.colorbar(self.contour, ax = self.spatial) 
 		
-		self.fig.canvas.mpl_connect('button_press_event', self.click)
-		self.timeline.callbacks.connect('xlim_changed', self.timerescale)
+		
+		self.fig.canvas.mpl_connect('key_press_event', self.key_pressed)
+		#self.timeline.callbacks.connect('xlim_changed', self.timerescale)
+		
+		#self.spatial.callbacks.connect('xlim_changed', self.update_spatial)
+		#self.spatial.callbacks.connect('ylim_changed', self.update_spatial)
 
 	def update_states(self):
-		self.statevax.remove()		
-		self.framevax.remove()
+		#self.statevax.remove()		
+		#self.framevax.remove()
+		self.states.clear()
+		xmin,xmax = self.states.get_xlim()
+		
 		'''a,= self.states.plot(self.state_data.times(),self.state_data.active(),c='green',drawstyle='steps-post',lw=2)
 		o,= self.states.plot(self.state_data.times(),self.state_data.open(),c='red',drawstyle='steps-post',lw=2)
 		i,= self.states.plot(self.state_data.times(),self.state_data.inhibited(),c='cyan',drawstyle='steps-post',lw=2)	
@@ -76,6 +87,8 @@ class Overview(object):
 		self.data.events().openchannels().plot(self.states)
 		self.statevax = self.states.axvline(x=self.state_time,ymin=-0.02,ymax=10,c="yellow",linewidth=3,zorder=0)
 		self.framevax = self.states.axvline(x=self.frame_time,ymin=-0.02,ymax=10,c="black",linewidth=3,zorder=0)
+		self.states.grid(True)
+		self.states.set_xlim([xmin,xmax])
 		#self.states.legend([r, a, o, i], ["resting","active","open","inhibited"], loc=2)
 
 	def update_stats(self):
@@ -104,12 +117,19 @@ class Overview(object):
 	def update_timeline(self):
 		if self.timelineplot != None:
 			self.timelineplot.pop(0).remove()
+			
+		#self.timeline.clear()
 		self.timelineplot = self.timeline.plot(self.spatial_data.frames,self.spatial_data.data[:,self.node],c='black',lw=2)
 
 	# spatial calcium plot
-	def update_spatial(self):		
+	def update_spatial(self, axes = None):
+		
 		xmin,xmax = self.spatial.get_xlim()
 		ymin,ymax = self.spatial.get_ylim()
+		
+		self.spatial.clear()
+		#self.spatial.axis([xmin,xmax,ymin,ymax])
+		
 		xi = numpy.linspace(xmin,xmax,100)
 		yi = numpy.linspace(ymin,ymax,100)
 		
@@ -126,12 +146,43 @@ class Overview(object):
 		from matplotlib.colors import LogNorm
 		
 		#~ self.contour = self.spatial.contourf(xi,yi,zi,15,norm=LogNorm())
-		self.contour = self.spatial.contourf(xi,yi,zi,self.contourlevels,norm=LogNorm())
-				
-		for state in ['open', 'closed']:
-			channels  = [c for c in self.data.channels() if c.instate('state',self.frame_time)]
-			locations = [c.location()[0:2] for c in channels]
-			scato = self.spatial.scatter(locations[:,0],locations[:,1],marker='o',c='black',s=100)
+		#self.contour = self.spatial.contourf(xi,yi,zi,self.contourlevels,norm=LogNorm())
+		norm = None
+		
+		if self.spatial_data == self.data.domain('er')['calcium']:
+			norm = LogNorm(1,700,clip=True)
+		else:
+			norm = LogNorm(0.02,250,clip=True)
+		
+		
+		'''if hasattr(self,"contour"):
+			self.contour.set_data(zi)
+			self.contour.set_extent([xmin,xmax,ymin,ymax])
+			if self.spatial_data == self.data.domain('er')['calcium']:
+				self.contour.set_norm(LogNorm(700,100,clip=True))
+			else:
+				self.contour.set_norm(LogNorm(0.02,250,clip=True))
+		else:
+			self.contour = self.spatial.imshow(zi,norm=LogNorm(0.02,250,clip=True),origin='lower',extent=[xmin,xmax,ymin,ymax],aspect='auto')
+			'''
+			
+		self.contour = self.spatial.imshow(zi,norm=norm,origin='lower',extent=[xmin,xmax,ymin,ymax],aspect='auto')
+		
+		self.spatial.axis([xmin,xmax,ymin,ymax])
+		
+		n     = self.spatial.scatter([self.spatial_data.nodes[self.node,0]],[self.spatial_data.nodes[self.node,1]],marker='h',c='black',s=100)
+		
+		for channel in self.data.channels():
+			self.spatial.add_artist(Circle(channel.location(),radius = channel.radius(),fill = channel.open(self.frame_time)))
+						
+		'''for state in self.data.events()._states.values():
+			satename  = state['name']
+			condition = state['condition']
+			marker    = state['marker']		
+			channels  = [c for c in self.data.channels() if condition(c.state().at(self.frame_time))]
+			locations = numpy.array([c.location()[0:2] for c in channels])
+			if locations.shape[0] > 0:
+				scato = self.spatial.scatter(locations[:,0],locations[:,1],marker=marker,c='black',s=100)'''
 		
 		#~ plot open and closed channels as X and O 
 		'''oc = self.state_data.locations(self.frame_time, 'open')
@@ -142,22 +193,49 @@ class Overview(object):
 		scati = self.spatial.scatter(ic[:]['x'],ic[:]['y'],marker='x',c='black',s=100)
 		scatr = self.spatial.scatter(rc[:]['x'],rc[:]['y'],marker='s',c='black',s=100)
 		scata = self.spatial.scatter(ac[:]['x'],ac[:]['y'],marker='^',c='black',s=100)	'''
-		n     = self.spatial.scatter([self.spatial_data.nodes[self.node,0]],[self.spatial_data.nodes[self.node,1]],marker='h',c='black',s=100)
+		
 
-	def click(self, event):
-		if event.button == 1:
-			if event.inaxes == self.states:				
-				self.state_time = self.state_data.data[self.state_data.frame(event.xdata),0]
-				self.frame_time = self.spatial_data.frames[self.spatial_data.frame(event.xdata)]				
-				self.update_states()
-				self.update_spatial()
-				self.fig.canvas.draw()		
-			elif event.inaxes == self.spatial:
-				self.node = self.spatial_data.node(event.xdata,event.ydata)
-				self.update_timeline()
-				self.update_spatial()
-				self.fig.canvas.draw()
-				print 'button=%d, x=%d, y=%d, xdata=%f, ydata=%f'%(event.button, event.x, event.y, event.xdata, event.ydata)
+	def key_pressed(self, event):		
+		try:
+			#print 'you pressed', event.key, event.xdata, event.ydata, event.inaxes
+			# button 2 = middle
+			if event.key == ' ':
+				if event.inaxes == self.states or event.inaxes == self.timeline:
+					self.state_time = self.data.events()._data[self.data.events().frame(event.xdata)]['t']
+					self.frame_time = self.spatial_data.frames[self.spatial_data.frame(event.xdata)]				
+					self.update_states()
+					self.update_spatial()
+					self.fig.canvas.draw()
+				elif event.inaxes == self.spatial:
+					self.node = self.spatial_data.node(event.xdata,event.ydata)
+					self.update_timeline()
+					self.update_spatial()
+					self.fig.canvas.draw()
+			if event.key == 'n':
+				if event.inaxes == self.spatial or event.inaxes == self.timeline:
+					self.select_next_spatial_data()
+					self.update_timeline()
+					self.update_spatial()
+					self.fig.canvas.draw()
+			if event.key == 'c':
+				if event.inaxes == self.spatial:
+					self.spatial_data = self.data.domain('cytosol')['calcium']
+					self.update_timeline()
+					self.update_spatial()
+					self.fig.canvas.draw()
+					
+		except Exception as detail:
+			tb = traceback.format_exc()
+		finally:
+			print tb
+			
+	def select_next_spatial_data(self):
+		if not hasattr(self,'spatial_data_cycle'):
+			datasets = []
+			for domain in self.data.domains():
+				for comp in domain.items():
+					datasets = datasets + []
+		self.spatial_data = self.data.domain('cytosol')['calcium']
 
 	def timerescale(self,axes):
 		if self.time_average_ax != None:
