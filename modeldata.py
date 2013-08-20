@@ -56,6 +56,10 @@ class EventData(object):
 		
 	def closedclusters(self):
 		return self.observe(lambda x: x['noch'],desc = 'open')
+		
+	# get a raw handle on the data
+	def data(self):
+		return self._data 
      
 	#~ return number of events
 	def events(self):
