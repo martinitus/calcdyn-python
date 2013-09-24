@@ -8,7 +8,7 @@ import binarydata
 from matplotlib.patches import Circle
 
 class Overview(object):	
-	def __init__(self, dataset,downsample = 10):
+	def __init__(self, dataset,downsample = 200):
 		
 		self.downsample = downsample
 		self.data   = dataset
@@ -228,8 +228,9 @@ class Overview(object):
 					
 		except Exception as detail:
 			tb = traceback.format_exc()
-		finally:
 			print tb
+		finally:
+			pass
 			
 	def select_next_spatial_data(self):
 		if not hasattr(self,'spatial_data_cycle'):

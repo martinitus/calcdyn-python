@@ -252,7 +252,7 @@ class NewDataFormat(SpatialData):
 		
 		framesize = self.nodes.shape[0] +1
 		
-		self.data = numpy.memmap(filename,dtype=numpy.float32,shape=(floats_in_file/framesize,framesize))
+		self.data = numpy.memmap(filename,dtype=numpy.float32,shape=(floats_in_file/framesize,framesize),mode = 'r')
 		#extract frame time colums
 		self.frames = self.data[:,0]
 		# drop frame time column
