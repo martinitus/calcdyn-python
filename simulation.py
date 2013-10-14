@@ -29,7 +29,7 @@ class Simulation(object):
 		# the event data (ModelData)
 		modelname = self.config.get('Meta','channelmodel')
 		
-		self._events    = EventData(path, modelname, self._channelcount)
+		self._events    = EventData(path)
 		
 		try:
 			# the spatial data
@@ -48,11 +48,7 @@ class Simulation(object):
 		# since genfromtxt returns 1d array for single line files we need to reshape
 		if channeldata.ndim == 0:
 			channeldata = [channeldata]
-			
-		self._channels = [Channel(line, self._events, self) for line in channeldata]
-			
-		# the cluster data 
-		self._clusters = [Cluster(i, [channel for channel in self._channels if channel.cluster() == i],self._events,self) for i in range(self._clustercount)]
+
 		
 		# the membrane object
 		self.__membrane = Membrane(self)
@@ -71,18 +67,6 @@ class Simulation(object):
 	
 	def events(self):
 		return self._events	
-	
-	def channels(self):
-		return self._channels
-		
-	def channel(self,i):
-		return self._channels[i]
-		
-	def clusters(self):
-		return self._clusters
-		
-	def cluster(self, i):
-		return self._clusters[i]
 	
 	def channelcount(self):
 		return len(self._channels)
