@@ -14,7 +14,10 @@ class Domain(dict):
 		#self.components = {}
 		# fill the dictionary with the corresponding data sets
 		for component in components:
-			self[component] = NewDataFormat(path,self.name + '.' + component)
+			try:
+				self[component] = NewDataFormat(path,self.name + '.' + component)
+			except:
+				pass
 			
 	def components(self):
 		return self.keys();

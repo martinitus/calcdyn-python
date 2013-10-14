@@ -31,13 +31,16 @@ class Simulation(object):
 		
 		self._events    = EventData(path, modelname, self._channelcount)
 		
-		# the spatial data
-		self._spatial  = {}
-		for domain in self.domains():
-			self._spatial[domain] = Domain(path, domain, components = self.config.get(domain,'components').split(','))
+		try:
+			# the spatial data
+			self._spatial  = {}
+			for domain in self.domains():
+				self._spatial[domain] = Domain(path, domain, components = self.config.get(domain,'components').split(','))
 		
-		if not self._spatial.has_key('er'):
-			self._spatial['er'] = FakeDomain('er',self)
+			if not self._spatial.has_key('er'):
+				self._spatial['er'] = FakeDomain('er',self)
+		except:
+			print "Warning: could not load spatial data"
 			
 		# the channels 
 		channeldata = numpy.genfromtxt(path + '/channels.csv', dtype=[('id', int), ('cluster', int), ('location', float, (3)), ('radius', float)])

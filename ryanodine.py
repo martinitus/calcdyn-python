@@ -61,12 +61,12 @@ def a(cy,er,N=1.):
     
 def rho(N,cy,er,frames):
     aa   = a(cy,er,N)
-    rho = lambda t: aa(t)*np.exp(-scipy.integrate.quad(aa,0,t)[0])
+    rho = lambda t: aa(t)*np.exp(-scipy.integrate.quadrature(aa,0,t,maxiter = 200)[0])
     return frames,map(rho,frames)
     
 def cdf(N,cy,er,frames):
     aa   = a(cy,er,N)
-    P = lambda t: 1. - np.exp(-scipy.integrate.quad(aa,0,t)[0])
+    P = lambda t: 1. - np.exp(-scipy.integrate.quadrature(aa,0,t,maxiter = 200)[0])
     return frames,map(P,frames)
 #def rho():
     

@@ -1,5 +1,7 @@
 import math
+import numpy
 
+from timeline import TimeLine
 
 class Channel(object):
 	''' 
