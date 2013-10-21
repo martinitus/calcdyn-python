@@ -119,7 +119,8 @@ class Overview(object):
 	def update_timeline(self):
 		if self.timelineplot != None:
 			self.timelineplot.pop(0).remove()
-			
+		
+		#TODO implement intelligent downsampling	
 		#self.timeline.clear()
 		self.timelineplot = self.timeline.plot(self.spatial_data.frames[::self.downsample],self.spatial_data.data[::self.downsample,self.node],c='black',lw=2)
 

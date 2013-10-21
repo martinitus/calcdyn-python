@@ -1,4 +1,36 @@
 import numpy
+import dyk
+
+class Puff(object):
+	def __init__(self, cluster, firstframe, lastframe):
+		self.__cluster = cluster
+		self.__start   = firstframe
+		self.__end     = lastframe
+		self.__events = cluster.events()[firstframe:lastframe]
+	
+	
+	def trajectory(self, dt):
+		for t in numpy.arange(start = self.start(),stop = self.end(),step = dt):
+			yield self.__events[self._events['t'].searchsorted(t)]
+	
+	def peak(self):
+		return self.__events['noch'].max()
+	
+	def available(self):
+		frame = self.__events['states']
+		withip3    = frame[:,[dyk.X100,dyk.X110,dyk.X111,dyk.X101]].sum(axis=1)
+		# the number of totally available channels (i.e. channels that have enough ip3 bound)
+		return (withip3>=3).sum()
+		
+	def start(self):
+		return self.__events['t'][0]
+		
+	def end(self):
+		return self.__events['t'][-1]
+		
+	def duration(self):
+		return self.end()-self.start()
+		
 
 class Cluster(object):
 	def __init__(self, index , channels, eventdata,simulation):
@@ -57,7 +89,7 @@ class Cluster(object):
 		puffs = self.__puffs[tolerance]	
 		
 		for puff in puffs:
-			yield self.__events[puff[0]:puff[1]]
+			yield Puff(self,puff[0],puff[1])
         
         
         
