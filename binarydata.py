@@ -15,7 +15,7 @@ class Domain(dict):
 		# fill the dictionary with the corresponding data sets
 		for component in components:
 			try:
-				self[component] = NewDataFormat(path,self.name + '.' + component)
+				self[component] = SpatialData(path,self.name + '.' + component)
 			except:
 				pass
 			
@@ -28,19 +28,56 @@ class Domain(dict):
 
 class SpatialData(object):
 	
-	def __init__(self,dataset,path=None):
+	def __init__(self,path,dataset):
 		#~ TODO: make generic for 3 dimensions
 		#~~self.nodes = numpy.zeros([0,3], dtype=numpy.float32)
 		self.dataset = dataset
-		self.nodes = numpy.zeros([0,2], dtype=numpy.float32)
-		self.data  = numpy.zeros([0,0], dtype=numpy.float32)
-		self.frames= numpy.zeros([0,0], dtype=numpy.float32)		
+		
 		#~ self.interpolator  = None
 		self.triangulation = None
 		
-		if path!=None:
-			print 'using new loading interface!'
-			load(path, dataset, self)
+		
+		# read the coordinates				
+		coordfile = open(path+dataset+".coordinates.bin")					
+		self.__nodes = numpy.fromfile(coordfile, dtype=numpy.float32)
+		#print self.nodes.shape
+		#print "using 3D dataset", self.nodes.size
+		self.__nodes = numpy.reshape(self.__nodes,(self.__nodes.size / 3,3))
+		self.__nodes = self.__nodes[:,0:2]
+		
+		if not os.path.exists(path+dataset+".downsampled.bin"):			
+			print "Downsampling", dataset			
+			filename = path + dataset + ".bin"		
+			floats_in_file   = os.path.getsize(filename)/4		
+			framesize = self.__nodes.shape[0] + 1
+			
+			data = numpy.memmap(filename,dtype=numpy.float32,shape=(floats_in_file/framesize,framesize),mode = 'r')
+			#extract frame time colums
+			frames = data[:,0]
+			
+			print "calculating frame selection"
+			selection = (frames[1:]-frames[:-1])>0.0005
+			selection[0] = True
+			
+			print "selected:",selection.sum()
+			frames[selection].tofile(path + dataset + ".frames.downsampled.bin")
+			
+			# drop frame time column
+			print "writing frame file"
+			data[selection,1:].tofile(path+dataset+".downsampled.bin")
+			
+			print "Creating transposed binary data"
+			swaped = data[selection,1:].swapaxes(0,1)
+			swaped.tofile(path+dataset+".transposed.bin")
+			print "Done"
+		
+		self.__frames     = numpy.fromfile(path+dataset+".frames.downsampled.bin", dtype=numpy.float32)
+		
+		f = self.__frames.shape[0]
+		n = self.__nodes.shape[0]
+		
+		self.__data       = numpy.memmap(path+dataset+".downsampled.bin",dtype = numpy.float32, shape = (f,n),mode = 'r')
+		self.__transposed = numpy.memmap(path+dataset+".transposed.bin", dtype = numpy.float32, shape = (n,f),mode = 'r')
 	
 	def select(self,xmin,xmax,ymin,ymax):
 		selection = numpy.logical_and(numpy.logical_and(xmin<=self.nodes[:,0],self.nodes[:,0] <= xmax),numpy.logical_and(ymin<=self.nodes[:,1],self.nodes[:,1] <= ymax))
@@ -52,7 +89,7 @@ class SpatialData(object):
 	#~ t, x, and y can all be either scalar or array types, if x and y are vectors, they both need to be the same size
 	#~ if all three are vector types, the return value will be a two dimensional array containing frames in first, and spatial values in second dimension
 	#~ if t is scalar, and either, x or y are arrays, the return type will be onedimensional
-	def __call__(self,t = None, x = None,y = None,fill_value = numpy.nan):
+	'''def __call__(self,t = None, x = None,y = None,fill_value = numpy.nan):
 		if self.triangulation == None:
 			self.triangulation = scipy.spatial.Delaunay(self.nodes) 
 		
@@ -106,24 +143,36 @@ class SpatialData(object):
 		if result.ndim == 2:
 			return result[0,:]
 		#~ print repr(result)
-		return result
+		return result'''
 		
 	# return a callable object representing a time interpolation for the given coordinates
-	def timeline(self,*args):
-		if len(args) == 1:
-			x=args[0][0]
-			y=args[0][1]
-		elif len(args)==2:
-			x=args[0]
-			y=args[1]
-		else:
-			raise Exception("dondt know what to do with:" + str(args))
-		datas = self.data.swapaxes(0,1)
-		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes, datas[:,:])				
-		interpolation = interpolator([[x,y]])[0]
-		return timeline.TimeLine(self.frames,interpolation,ylabel=self.dataset,yunit='$\mu$M')
+	#~ def timeline(self,*args):
+		#~ if len(args) == 1:
+			#~ x=args[0][0]
+			#~ y=args[0][1]
+		#~ elif len(args)==2:
+			#~ x=args[0]
+			#~ y=args[1]
+		#~ else:
+			#~ raise Exception("dondt know what to do with:" + str(args))
+		#~ datas = self.data.swapaxes(0,1)
+		#~ interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes, datas[:,:])				
+		#~ interpolation = interpolator([[x,y]])[0]
+		#~ return timeline.TimeLine(self.frames,interpolation,ylabel=self.dataset,yunit='$\mu$M')
+		
+	def nodes(self):
+		return self.__nodes
+		
+	def frames(self):
+		return self.__frames
 	
-		# return a callable object representing a time interpolation for the given coordinates
+	def data(self, transposed = False):
+		if transposed:
+			return self.__transposed
+		else:
+			return self.__data
+	
+	# return a frames and concentrations for given coordinate
 	def evolution(self,*args):
 		if len(args) == 1:
 			x=args[0][0]
@@ -133,24 +182,23 @@ class SpatialData(object):
 			y=args[1]
 		else:
 			raise Exception("dondt know what to do with:" + str(args))
-		datas = self.data.swapaxes(0,1)
-		interpolator  = scipy.interpolate.LinearNDInterpolator(self.nodes, datas[:,:])				
+		interpolator  = scipy.interpolate.LinearNDInterpolator(self.__nodes, self.__transposed)
 		interpolation = interpolator([[x,y]])[0]
-		return self.frames,interpolation
+		return self.__frames, interpolation
 	
 	
 	# retrief a interpolator object for 2D slice at given time
 	def snapshot(self,t):
-		datas         = self.data.swapaxes(0,1)
+		#datas         = self.data.swapaxes(0,1)
 		
 		# create time domain interpolator
-		timeinterpol  = scipy.interpolate.interp1d(self.frames,datas,copy = False, fill_value = numpy.nan)
+		timeinterpol  = scipy.interpolate.interp1d(self.__frames,self.__data,axis = 0)
 		
 		# calculate scattered data values for time t
-		datat         = timeinterpol(t)
+		return timeinterpol(t)
 		
 		#create interpolator for spatial coordinates	
-		return scipy.interpolate.LinearNDInterpolator(self.nodes, datat,fill_value = numpy.nan)		
+		#return scipy.interpolate.LinearNDInterpolator(self.nodes, datat,fill_value = numpy.nan)		
 	
 	def write(self, path):
 		# write coordinate file
@@ -170,35 +218,14 @@ class SpatialData(object):
 		self.nodes[:,1] = self.nodes[:,1] + y
 		
 	#return the frame number closest to the given time
-	def frame(self, time, fmin = 0, fmax = -1):
-		if fmax == -1:
-			fmax = self.frames.size -1
-			
-		#~ print 'time',time,'fmin',fmin,'fmax',fmax
-		#abort recursion
-		if fmax - fmin == 1:
-			#~ if time - self.frames[fmin] < self.frames[fmax] - time :
-			return fmin
-			#~ else: 
-				#~ return fmax
-			
-		f = fmin + (fmax-fmin)/2
-		#search in left hand side
-		if self.frames[f] > time:
-			#~ print 'lhs'
-			return self.frame(time,fmin,f)
-		#search in right hand side
-		if self.frames[f] <= time:
-			#~ print 'rhs'
-			return self.frame(time,f,fmax)
-		
-		raise Exception("should never be reached...")
+	def frame(self, time):
+		return numpy.searchsorted(self.__frames,time)
 	
 	def tmin(self):
-		return self.frames[0]
+		return self.__frames[0]
 	
 	def tmax(self):
-		return self.frames[-1]	
+		return self.__frames[-1]	
 	
 	# return index of node closest to [x,y]
 	def node(self,*args):
@@ -213,7 +240,7 @@ class SpatialData(object):
 		n = 0
 		mn = 0
 		mindist = 9E30
-		for node in self.nodes:
+		for node in self.__nodes:
 			#~ print node
 			dist = (node[0] - x)*(node[0] - x) + (node[1] -y)*(node[1] -y)
 			if dist < mindist:				
@@ -224,17 +251,17 @@ class SpatialData(object):
 		return mn
 		
 		
-	def griddata(self, time, xmin,xmax,ymin,ymax,resolution):
+	def grid(self, time, xmin,xmax,ymin,ymax,resolution):
 		xi = numpy.linspace(xmin,xmax,resolution)
 		yi = numpy.linspace(ymin,ymax,resolution)
-		zi = scipy.interpolate.griddata((self.nodes[:,0],self.nodes[:,1]), self(time), (xi[None,:], yi[:,None]), method='cubic')
+		zi = scipy.interpolate.griddata(self.__nodes, self.snapshot(time), (xi[None,:], yi[:,None]), method='cubic')
 		return zi
 		
-	def spatialextend(self):
-		return numpy.array([self.nodes[:,0].min(),self.nodes[:,0].max(),self.nodes[:,1].min(),self.nodes[:,1].max()])
+	def extend(self):
+		return numpy.array([self.__nodes[:,0].min(),self.__nodes[:,0].max(),self.__nodes[:,1].min(),self.__nodes[:,1].max()])
 	
 	def center(self):
-		e  = self.spatialextend()		
+		e  = self.extend()		
 		return numpy.array([e[1]/2,e[3]/2])
 		
 		

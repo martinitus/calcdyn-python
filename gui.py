@@ -10,7 +10,6 @@ from matplotlib.patches import Circle
 class Overview(object):	
 	def __init__(self, dataset,downsample = 200):
 		
-		self.downsample = downsample
 		self.data   = dataset
 		
 		self.spatial_data = dataset.domain('cytosol')['calcium']
@@ -18,79 +17,130 @@ class Overview(object):
 		self.fig = plt.figure(self.data.path)
 		self.fig.subplots_adjust(left = 0.06, bottom = 0.04, right = 0.97, top = 0.97, wspace = 0.05, hspace = 0.05)
 
-		#~ the timeline upper left
-		self.states = self.fig.add_subplot(2,2,1)
+		#~ Create for subplots with shared axes for the right side
+		self.states        = self.fig.add_subplot(2,2,1)
+		self.stats         = self.fig.add_subplot(2,2,2)
+		self.concentration = self.fig.add_subplot(2,2,3,sharex=self.states)
+		self.spatial       = self.fig.add_subplot(2,2,4)
+		
+		# set up grids
 		self.states.grid(True)
+		self.concentration.grid(True)
+		
+		# set up thick horizontal base line
 		self.states.axhline(0, color='black', lw=2)
-		self.states.set_xlim([self.data.tmin(), self.data.tmax()])
+		self.concentration.axhline(0, color='black', lw=2)
+		
+		# set up x and y labels
+		self.states.set_xlabel('t [s]')
+		self.concentration.set_xlabel('t [s]')
+		
 		self.states.set_ylabel('channels')
-		self.states.set_xlabel('time [s]')
-		self.statevax = self.states.axvline(x=0,ymin=-0.02,ymax=10,c="black",linewidth=3,zorder=0)
-		self.framevax = self.states.axvline(x=0,ymin=-0.02,ymax=10,c="black",linewidth=3,zorder=0)
+		self.concentration.set_ylabel('[muM]')
+		
+		# set up the lines marking the currently selected frame
+		self.statevax         = self.states.axvline(x=0,ymin=-0.02,ymax=10,c="red",linewidth=3,zorder=0)
+		self.concentrationvax = self.concentration.axvline(x=0,ymin=-0.02,ymax=10,c="black",linewidth=3,zorder=0)
+
+		# plot number of open channels
+		self.noch = self.states.plot(self.data.events().data()['t'],self.data.events().data()['noch'])
+		
+		# plot calcium evolution at center
+		self.xy    = self.spatial_data.center()
+		self.ca,   = self.concentration.plot(*self.spatial_data.evolution(self.xy),label = 'cy-calcium',color = 'black')
+		
+		# add second axes for er concentration
+		self.concentrationer = self.concentration.twinx()
+		self.erca, = self.concentrationer.plot(*dataset.domain('er')['calcium'].evolution(self.xy),label = 'er-calcium',color = 'green')
+		
+		#draw legend
+		self.concentration.legend()
+		
+		# plot spatial distribution
+		xmin,xmax,ymin,ymax = self.spatial_data.extend()
+		zi = self.spatial_data.grid(10,xmin,xmax,ymin,ymax,100)
+		from matplotlib import colors 
+		from matplotlib.colors import LogNorm
+		self.contour = self.spatial.imshow(zi,norm=LogNorm(0.02,250,clip=True),origin='lower',extent=self.spatial_data.extend(),aspect='auto')
+				
+		from matplotlib.ticker import LogLocator, LogFormatter 
+		l_f = LogFormatter(10, labelOnlyBase=False) 
+		self.cbar = plt.colorbar(self.contour, ax = self.spatial) 
+		
+		for channel in self.data.channels():
+			self.spatial.add_artist(Circle(channel.location(),radius = channel.radius(),fill = channel.open(0)))
+		
+		# connect callbacks for interactivity
+		self.fig.canvas.mpl_connect('key_press_event', self.key_pressed)
+		
 
 		#~ the state statistics upper right
-		self.stats = self.fig.add_subplot(2,2,2)
-		self.stats.grid(True)
+		
+		#self.stats.grid(True)
 		#self.stats.axhline(0, color='black', lw=2)
 		#self.stats.axis([0,500,0,0.3])
 		#self.stats.set_ylabel('state duration distribution')
 		#self.stats.set_xlabel('time[ms]')
 
 		#~ calcium levels time line for given coordinate lower right
-		self.timeline = self.fig.add_subplot(2,2,3,sharex=self.states)
-		self.timeline.grid(True)
-		self.timeline.axhline(0, color='black', lw=2)
-		self.timeline.axis([self.data.tmin(), self.data.tmax(),0,200])
-		self.timeline.set_ylabel('[muM]')
-		self.timeline.set_xlabel('time [s]')
-		self.timeline.set_yscale('log')
-		self.timelineplot = None
-		self.time_average_ax = None
+		
+		
+		#self.concentration.axhline(0, color='black', lw=2)
+		#self.timeline.axis([self.data.tmin(), self.data.tmax(),0,200])
+		#self.concentration.set_ylabel()
+		#self.concentration.set_xlabel('time [s]')
+		#self.concentration.set_yscale('log')
+		#self.concentration = None
+		#self.concentration = None
 		
 		#~ the spatial calcium distribution lower left
-		self.spatial = self.fig.add_subplot(2,2,4)
-		self.spatial.axis(self.spatial_data.spatialextend())
-		self.spatial.grid(True)
-		self.spatial.set_title('spatial calcium')
 		
-		self.state_time = 0
-		self.frame_time = 0
-		self.node = self.spatial_data.node(self.spatial_data.center())
+		#self.spatial.axis(self.spatial_data.extend())
+		#self.spatial.grid(True)
+		#self.spatial.set_title('spatial calcium')
+		
+	#	self.state_time = 0
+	#	self.x,self.y = self.spatial_data.center()
 		#self.contourlevels=[0.001, 0.01, 0.1, 1, 2, 4, 8,16, 32, 64, 128, 256]
 		#self.contourlevels=[400,500,550,600,650,675]
 		
-		self.update_states()
-		self.update_stats()
-		self.update_timeline()
-		self.update_spatial()
-		
-#~ self.fig.colorbar(self.contour, ax = self.spatial)
-		from matplotlib.ticker import LogLocator, LogFormatter 
-		l_f = LogFormatter(10, labelOnlyBase=False) 
-		self.cbar = plt.colorbar(self.contour, ax = self.spatial) 
+		#self.update_states()
+		#self.update_stats()
+		#self.update_timeline()
+		#self.update_spatial()
+
 		
 		
-		self.fig.canvas.mpl_connect('key_press_event', self.key_pressed)
+		#
 		#self.timeline.callbacks.connect('xlim_changed', self.timerescale)
 		
 		#self.spatial.callbacks.connect('xlim_changed', self.update_spatial)
 		#self.spatial.callbacks.connect('ylim_changed', self.update_spatial)
 
-	def update_states(self):
-		#self.statevax.remove()		
-		#self.framevax.remove()
-		self.states.clear()
-		xmin,xmax = self.states.get_xlim()
-		
+	def set_time(self,t):
 		'''a,= self.states.plot(self.state_data.times(),self.state_data.active(),c='green',drawstyle='steps-post',lw=2)
 		o,= self.states.plot(self.state_data.times(),self.state_data.open(),c='red',drawstyle='steps-post',lw=2)
 		i,= self.states.plot(self.state_data.times(),self.state_data.inhibited(),c='cyan',drawstyle='steps-post',lw=2)	
 		r,= self.states.plot(self.state_data.times(),self.state_data.resting(),c='blue',drawstyle='steps-post',lw=2)'''
-		self.data.events().openchannels().plot(self.states)
-		self.statevax = self.states.axvline(x=self.state_time,ymin=-0.02,ymax=10,c="yellow",linewidth=3,zorder=0)
-		self.framevax = self.states.axvline(x=self.frame_time,ymin=-0.02,ymax=10,c="black",linewidth=3,zorder=0)
-		self.states.grid(True)
-		self.states.set_xlim([xmin,xmax])
+		ti = self.spatial_data.frames().searchsorted(t);
+		t  = self.spatial_data.frames()[ti-1]
+		
+		self.statevax.set_xdata([t,t])
+		self.concentrationvax.set_xdata([t,t])
+		
+		xmin,xmax = self.spatial.get_xlim()
+		ymin,ymax = self.spatial.get_ylim()
+		
+		self.contour.set_data(self.spatial_data.grid(t,xmin,xmax,ymin,ymax,1000))
+		self.contour.set_extent((xmin,xmax,ymin,ymax))
+		#self.spatial.axis([xmin,xmax,ymin,ymax])
+		self.time = t
+		
+	def set_location(self,x,y):
+		self.xy = (x,y)
+		
+		self.ca.set_data(*self.data.domain('cytosol')['calcium'].evolution(x,y))
+		self.erca.set_data(*self.data.domain('er')['calcium'].evolution(x,y))
 		#self.states.legend([r, a, o, i], ["resting","active","open","inhibited"], loc=2)
 
 	def update_stats(self):
@@ -116,14 +166,6 @@ class Overview(object):
 			#~ format(rest = , active = numpy.mean(asd), open = numpy.mean(osd), inhibited = numpy.mean(isd))		
 		#~ self.stats.text(200, 0.2, text, fontsize=18, ha='center', va='top')'''
 
-	def update_timeline(self):
-		if self.timelineplot != None:
-			self.timelineplot.pop(0).remove()
-		
-		#TODO implement intelligent downsampling	
-		#self.timeline.clear()
-		self.timelineplot = self.timeline.plot(self.spatial_data.frames[::self.downsample],self.spatial_data.data[::self.downsample,self.node],c='black',lw=2)
-
 	# spatial calcium plot
 	def update_spatial(self, axes = None):
 		
@@ -131,17 +173,8 @@ class Overview(object):
 		ymin,ymax = self.spatial.get_ylim()
 		
 		self.spatial.clear()
-		#self.spatial.axis([xmin,xmax,ymin,ymax])
 		
-		xi = numpy.linspace(xmin,xmax,100)
-		yi = numpy.linspace(ymin,ymax,100)
-		
-		# grid the data.	
-		frame = self.spatial_data.frame(self.frame_time)
-		#~ data = numpy.log(self.calcium_data.data[frame,:])
-		data = self.spatial_data.data[frame,:]
-
-		zi = scipy.interpolate.griddata((self.spatial_data.nodes[:,0],self.spatial_data.nodes[:,1]), data, (xi[None,:], yi[:,None]), method='cubic')
+		zi = self.spatial_data.grid(self.state_time,xmin,xmax,ymin,ymax,100/(xmax-xmin))
 
 		# plot countour lines
 		#~ cont2 = self.spatial.contourf(y1, z1, data, norm=plt.colors.LogNorm(lev[0],lev[len(lev)-1])) 
@@ -173,10 +206,10 @@ class Overview(object):
 		
 		self.spatial.axis([xmin,xmax,ymin,ymax])
 		
-		n     = self.spatial.scatter([self.spatial_data.nodes[self.node,0]],[self.spatial_data.nodes[self.node,1]],marker='h',c='black',s=100)
+		n     = self.spatial.scatter([self.x],[self.y],marker='h',c='black',s=100)
 		
 		for channel in self.data.channels():
-			self.spatial.add_artist(Circle(channel.location(),radius = channel.radius(),fill = channel.open(self.frame_time)))
+			self.spatial.add_artist(Circle(channel.location(),radius = channel.radius(),fill = channel.open(self.state_time)))
 						
 		'''for state in self.data.events()._states.values():
 			satename  = state['name']
@@ -203,35 +236,35 @@ class Overview(object):
 			#print 'you pressed', event.key, event.xdata, event.ydata, event.inaxes
 			# button 2 = middle
 			if event.key == ' ':
-				if event.inaxes == self.states or event.inaxes == self.timeline:
-					self.state_time = self.data.events()._data[self.data.events().frame(event.xdata)]['t']
-					self.frame_time = self.spatial_data.frames[self.spatial_data.frame(event.xdata)]				
-					self.update_states()
-					self.update_spatial()
+				if event.inaxes == self.states or event.inaxes == self.concentration:
+					
+					self.set_time(event.xdata)
+					#self.update_states()
+					#self.update_spatial()
 					self.fig.canvas.draw()
 				elif event.inaxes == self.spatial:
-					self.node = self.spatial_data.node(event.xdata,event.ydata)
-					self.update_timeline()
-					self.update_spatial()
+					self.set_location(event.xdata,event.ydata)
+					#self.update_timeline()
+					#self.update_spatial()
 					self.fig.canvas.draw()
 			if event.key == 'n':
-				if event.inaxes == self.spatial or event.inaxes == self.timeline:
-					self.select_next_spatial_data()
-					self.update_timeline()
-					self.update_spatial()
+				if event.inaxes == self.spatial or event.inaxes == self.concentration:
+					#self.select_next_spatial_data()
+					#self.update_timeline()
+					#self.update_spatial()
 					self.fig.canvas.draw()
 			if event.key == 'c':
 				if event.inaxes == self.spatial:
-					self.spatial_data = self.data.domain('cytosol')['calcium']
-					self.update_timeline()
-					self.update_spatial()
+					#self.spatial_data = self.data.domain('cytosol')['calcium']
+					#self.update_timeline()
+					#self.update_spatial()
 					self.fig.canvas.draw()
-					
 		except Exception as detail:
 			tb = traceback.format_exc()
 			print tb
 		finally:
 			pass
+		self.fig.canvas.draw()
 			
 	def select_next_spatial_data(self):
 		if not hasattr(self,'spatial_data_cycle'):
@@ -245,7 +278,7 @@ class Overview(object):
 		if self.time_average_ax != None:
 			self.time_average_ax.remove()
 			self.time_average_ax = None
-		x,y   = self.spatial_data.nodes[self.node]
+		x,y   = self.spatial_data.nodes()[self.node]
 		t0,t1 = self.timeline.get_xlim()
 		#~ print x,y
 		#~ print t0,t1

@@ -7,6 +7,7 @@ class Puff(object):
 		self.__start   = firstframe
 		self.__end     = lastframe
 		self.__events = cluster.events()[firstframe:lastframe]
+		#print "created puff", self.start(), self.end(), self.duration(), self.peak()
 	
 	
 	def trajectory(self, dt):

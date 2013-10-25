@@ -26,8 +26,13 @@ class EventData(object):
 		# the set of defined states must at least contain a definition of open and closed state
 		assert(self._states.has_key('open'))
 		assert(self._states.has_key('closed'))
-				
-		self._data   = numpy.genfromtxt(os.path.join(path, 'transitions.csv'),dtype = self._model.types(channelcount))
+		
+		if os.path.exists(os.path.join(path, 'transitions.bin')):		
+			self._data = numpy.fromfile(os.path.join(path, 'transitions.bin'),dtype = self._model.types(channelcount))
+		else:
+			self._data   = numpy.genfromtxt(os.path.join(path, 'transitions.csv'),dtype = self._model.types(channelcount))
+			# write binary file for smaller processing
+			self._data.tofile(os.path.join(path, 'transitions.bin'))			
 		
 		# TODO:  #insert initial and final state
 		''''states  = numpy.insert(states,0,data['states'][0][i],axis = 0)
