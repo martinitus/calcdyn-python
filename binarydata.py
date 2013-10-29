@@ -6,7 +6,7 @@ import scipy.integrate
 import timeline
 
 class Domain(dict):
-	def __init__(self, path, name, components = ['calcium']):
+	def __init__(self, path, name, components = ['calcium'],**kwargs):
 		super(Domain, self).__init__()
 		# the name of the domain
 		self.name       = name		
@@ -15,7 +15,7 @@ class Domain(dict):
 		# fill the dictionary with the corresponding data sets
 		for component in components:
 			try:
-				self[component] = SpatialData(path,self.name + '.' + component)
+				self[component] = SpatialData(path,self.name + '.' + component,**kwargs)
 			except:
 				pass
 			
@@ -28,7 +28,7 @@ class Domain(dict):
 
 class SpatialData(object):
 	
-	def __init__(self,path,dataset):
+	def __init__(self,path,dataset,refresh=False):
 		#~ TODO: make generic for 3 dimensions
 		#~~self.nodes = numpy.zeros([0,3], dtype=numpy.float32)
 		self.dataset = dataset
@@ -45,7 +45,7 @@ class SpatialData(object):
 		self.__nodes = numpy.reshape(self.__nodes,(self.__nodes.size / 3,3))
 		self.__nodes = self.__nodes[:,0:2]
 		
-		if not os.path.exists(path+dataset+".downsampled.bin"):			
+		if not os.path.exists(path+dataset+".downsampled.bin") or refresh:			
 			print "Downsampling", dataset			
 			filename = path + dataset + ".bin"		
 			floats_in_file   = os.path.getsize(filename)/4		

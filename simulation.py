@@ -17,7 +17,7 @@ from cluster import Cluster
 
 # hold the combination of event data, spatial data and channel data
 class Simulation(object):
-	def __init__(self, path):
+	def __init__(self, path,**kwargs):
 		self.path = path
 		self.config = ConfigParser.RawConfigParser()
 		self.config.read(path + "/parameters.txt")
@@ -29,13 +29,13 @@ class Simulation(object):
 		# the event data (ModelData)
 		modelname = self.config.get('Meta','channelmodel')
 		
-		self._events    = EventData(path, modelname, self._channelcount)
+		self._events    = EventData(path, modelname, self._channelcount, **kwargs)
 		
 		try:
 			# the spatial data
 			self._spatial  = {}
 			for domain in self.domains():
-				self._spatial[domain] = Domain(path, domain, components = self.config.get(domain,'components').split(','))
+				self._spatial[domain] = Domain(path, domain, components = self.config.get(domain,'components').split(','),**kwargs)
 		
 			if not self._spatial.has_key('er'):
 				self._spatial['er'] = FakeDomain('er',self)

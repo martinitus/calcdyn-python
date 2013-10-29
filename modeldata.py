@@ -18,7 +18,7 @@ channelmodels['RyRModel']      = ryanodine
 
 class EventData(object):
 	
-	def __init__(self, path, modelname, channelcount,tend=None):
+	def __init__(self, path, modelname, channelcount,refresh = False):
 		
 		self._model = channelmodels[modelname]
 	
@@ -27,7 +27,7 @@ class EventData(object):
 		assert(self._states.has_key('open'))
 		assert(self._states.has_key('closed'))
 		
-		if os.path.exists(os.path.join(path, 'transitions.bin')):		
+		if os.path.exists(os.path.join(path, 'transitions.bin')) and not refresh:		
 			self._data = numpy.fromfile(os.path.join(path, 'transitions.bin'),dtype = self._model.types(channelcount))
 		else:
 			self._data   = numpy.genfromtxt(os.path.join(path, 'transitions.csv'),dtype = self._model.types(channelcount))
