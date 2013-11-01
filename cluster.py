@@ -34,10 +34,10 @@ class Puff(object):
 		
 
 class Cluster(object):
-	def __init__(self, index , channels, eventdata,simulation):
+	def __init__(self, index , channels, eventdata):
 		self._channels = channels
 		self.__eventdata = eventdata
-		self.__simulation = simulation
+		#self.__simulation = simulation
 		self.__events = None
 		self.__index  = index
 		self.__puffs  = {}

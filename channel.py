@@ -8,14 +8,14 @@ class Channel(object):
 		infos:       a tuple containing channel id, channel location and cluster id
 		transitions: a list of channel transitions, the channel will extract its own transitions from the global transition list
 	'''
-	def __init__(self,infos,eventdata,simulation):
+	def __init__(self,infos,eventdata):
 		#print infos
 		self.__location = infos['location']
 		self.__index = infos['id']
 		self.__radius = infos['radius']
 		self.__cluster = infos['cluster']
 		self.__eventdata = eventdata
-		self.__simulation = simulation
+#		self.__simulation = simulation
 		
 		self.__state   = None;
 	

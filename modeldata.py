@@ -3,6 +3,10 @@ import numpy
 import csv
 
 from timeline import TimeLine
+from channel import Channel
+from cluster import Cluster
+
+import ConfigParser
 
 import dyk
 import deterministic
@@ -18,7 +22,17 @@ channelmodels['RyRModel']      = ryanodine
 
 class EventData(object):
 	
-	def __init__(self, path, modelname, channelcount,refresh = False):
+	def __init__(self, path, refresh = False):
+		
+		self.config = ConfigParser.RawConfigParser()
+		self.config.read(path + "/parameters.txt")
+		
+		# the amount of contained channels
+		self._channelcount = self.config.getint('ChannelSetup','channels')
+		self._clustercount = self.config.getint('ChannelSetup','clusters')
+		
+		# the event data (ModelData)
+		modelname = self.config.get('Meta','channelmodel')
 		
 		self._model = channelmodels[modelname]
 	
@@ -27,28 +41,44 @@ class EventData(object):
 		assert(self._states.has_key('open'))
 		assert(self._states.has_key('closed'))
 		
+		# the channels 
+		channeldata = numpy.genfromtxt(path + '/channels.csv', dtype=[('id', int), ('cluster', int), ('location', float, (3)), ('radius', float)])
+		# since genfromtxt returns 1d array for single line files we need to reshape
+		if channeldata.ndim == 0:
+			channeldata = [channeldata]
+			
+		assert(self._channelcount == len(channeldata))
+		
 		if os.path.exists(os.path.join(path, 'transitions.bin')) and not refresh:		
 			self._data = numpy.fromfile(os.path.join(path, 'transitions.bin'),dtype = self._model.types(channelcount))
 		else:
 			self._data   = numpy.genfromtxt(os.path.join(path, 'transitions.csv'),dtype = self._model.types(channelcount))
 			# write binary file for smaller processing
 			self._data.tofile(os.path.join(path, 'transitions.bin'))			
-		
-		# TODO:  #insert initial and final state
-		''''states  = numpy.insert(states,0,data['states'][0][i],axis = 0)
-			states  = numpy.append(states,  [data['states'][-1][i]],axis = 0)
 			
-			frames  = numpy.insert(frames,0,data['t'][0],axis = 0)
-			frames  = numpy.append(frames,  data['t'][-1])'''
+		self._channels = [Channel(line, self) for line in channeldata]
+			
+		# the cluster data 
+		self._clusters = [Cluster(i, [channel for channel in self._channels if channel.cluster() == i],self) for i in range(self._clustercount)]
 		
-		self._channelcount = channelcount
 		
-				
 	def __repr__(self):
 		return "EventData (Channels: %d, Events: %d)" % (self._channelcount, self.events())
 		
 	def _repr_svg_(self):
 		return self.open()._repr_svg_()
+		
+	def channels(self):
+		return self._channels
+		
+	def channel(self,i):
+		return self._channels[i]
+		
+	def clusters(self):
+		return self._clusters
+		
+	def cluster(self, i):
+		return self._clusters[i]
 		
 	def openchannels(self):
 		return self.observe(lambda x: x['noch'],desc = 'open')
