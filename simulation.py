@@ -92,3 +92,36 @@ class Simulation(object):
 		
 	def tmax(self):
 		return self.domain('cytosol')['calcium'].tmax()
+		
+	def totalfluorescence(self, data, fmin = None, fmax = None):
+		assert(self.domain('cytosol').has_key('dye'))
+		
+		if fmin == None:
+			fmin   =  self.config.getfloat('dye','fmin');
+		if fmax == None:
+			fmax   =  self.config.getfloat('dye','fmax');
+			
+		Bd     = self.config.getfloat('dye','B');
+
+		return data*fmax + (Bd-data)*fmin
+		
+	def relativefluorescence(self,data, fmin = None, fmax = None):
+		if fmin == None:
+			fmin   =  self.config.getfloat('dye','fmin');
+		if fmax == None:
+			fmax   =  self.config.getfloat('dye','fmax');
+		
+		total  = self.totalfluorescence(data,fmin,fmax)
+		Bd     = self.config.getfloat('dye','B');
+		
+		c0     = self.config.getfloat('cytosol','c0');
+		kminus = self.config.getfloat('dye','kminus');
+		kplus  = self.config.getfloat('dye','kplus');
+		resting =  Bd * c0 / (kminus / kplus + c0);
+		print "B",Bd
+		print "c0",c0
+		print "k-,k+,k-/k+",kminus,kplus,kminus/kplus
+		print "b_rest:",resting
+		print "(b_rest*fmax + (Bd_b-rest)*fmin)",(resting*fmax + (Bd-resting)*fmin)
+		
+		return total / (resting*fmax + (Bd-resting)*fmin) - 1
