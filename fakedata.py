@@ -1,7 +1,11 @@
 class FakeSpatialData(object):
 	
-	def __init__(self,realdata):
-		self._realdata = realdata
+	def __init__(self,name):
+		#self._realdata = realdata
+		self.__name = name
+		
+	def name(self):
+		return self.__name
 		
 	# return a callable object representing a time interpolation for the given coordinates
 	def timeline(self,*args):
@@ -25,6 +29,9 @@ class FakeSpatialData(object):
 	# return index of node closest to [x,y]
 	def node(self,*args):
 		return self._realdata.nodes(args)		
+	
+	def evolution(self,*args):
+		return None, 700
 		
 	def griddata(self, time, xmin,xmax,ymin,ymax,resolution):
 		xi = numpy.linspace(xmin,xmax,resolution)
@@ -37,16 +44,3 @@ class FakeSpatialData(object):
 	
 	def center(self):
 		self._realdata.center()
-		
-class FakeDomain(dict):
-	def __init__(self, name, simulation, components = ['calcium']):
-		super(FakeDomain, self).__init__()
-		# the name of the domain
-		self.name       = name	
-		self.simulation = simulation	
-		# fill the dictionary with the corresponding data sets
-		for component in components:
-			self[component] = FakeSpatialData(simulation.domain('cytosol')['calcium'])
-			
-	def components(self):
-		return self.keys();		

@@ -4,16 +4,18 @@
 import ConfigParser
 import numpy
 import math
+import types
 
 from scipy import integrate
 
 from timeline import TimeLine
 from modeldata import EventData
-from binarydata import Domain
-from fakedata import FakeDomain
+from fakedata import FakeSpatialData
 from membrane import Membrane
 from channel import Channel
 from cluster import Cluster
+from domain import Domain
+from binarydata import SpatialData
 
 # hold the combination of event data, spatial data and channel data
 class Simulation(object):
@@ -31,33 +33,37 @@ class Simulation(object):
 		
 		self._events    = EventData(path,**kwargs)
 		
-		try:
-			# the spatial data
-			self._spatial  = {}
-			for domain in self.domains():
-				self._spatial[domain] = Domain(path, domain, components = self.config.get(domain,'components').split(','),**kwargs)
-		
-			if not self._spatial.has_key('er'):
-				self._spatial['er'] = FakeDomain('er',self)
-		except:
-			print "Warning: could not load spatial data"
+		self.__domains = {}
+		for domain_name in ['cytosol','er']:
+			self.__domains[domain_name] = Domain(domain_name, self)
+			# add the domain as attribute to the simulation object
+			self.__dict__[domain_name] = self.__domains[domain_name]
 			
+			if self.config.has_section(domain_name) and self.config.has_option(domain_name,'components'):
+				for component_name in self.config.get(domain_name,'components').split(','):
+					self.__domains[domain_name].add_component(component_name, SpatialData(path,domain_name + '.' + component_name, **kwargs))
+			else:
+				self.__domains[domain_name].add_component('calcium',FakeSpatialData('calcium'))
+				
 		# the channels 
 		channeldata = numpy.genfromtxt(path + '/channels.csv', dtype=[('id', int), ('cluster', int), ('location', float, (3)), ('radius', float)])
 		
 		# since genfromtxt returns 1d array for single line files we need to reshape
 		if channeldata.ndim == 0:
 			channeldata = [channeldata]
-
+			
+		# set the channels simdata reference to this
+		for c in self.channels():
+			c.setSimulation(self)
 		
 		# the membrane object
 		self.__membrane = Membrane(self)
 			
 	def domains(self):
-		return self.property('Meta','domains').split(',')
+		return self.__domains
 		
 	def domain(self,domain):
-		return self._spatial[domain]
+		return self.__domains[domain]
 		
 	def property(self, section, item):
 		return self.config.get(section,item)
@@ -70,6 +76,18 @@ class Simulation(object):
 	
 	def channelcount(self):
 		return len(self._channels)
+		
+	def channels(self):
+		return self._events.channels();
+		
+	def clusters(self):
+		return self._events.clusters();
+		
+	def channel(self,c):
+		return self._events.channel(c)
+		
+	def cluster(self,c):
+		return self._events.cluster(c)
 		
 	def tmin(self):
 		return self.domain('cytosol')['calcium'].tmin()

@@ -50,11 +50,14 @@ class Overview(object):
 		self.ca,   = self.concentration.plot(*self.spatial_data.evolution(self.xy),label = 'cy-calcium',color = 'black')
 		
 		# add second axes for er concentration
-		self.concentrationer = self.concentration.twinx()
-		self.erca, = self.concentrationer.plot(*dataset.domain('er')['calcium'].evolution(self.xy),label = 'er-calcium',color = 'green')
+		#self.concentrationer = self.concentration.twinx()
+		#self.erca, = self.concentrationer.plot(*dataset.domain('er')['calcium'].evolution(self.xy),label = 'er-calcium',color = 'green')
 		
 		#draw legend
 		self.concentration.legend()
+		
+		# set x plotrange of concentration and state frame
+		self.concentration.set_xlim(self.data.tmin(),self.data.tmax())
 		
 		# plot spatial distribution
 		xmin,xmax,ymin,ymax = self.spatial_data.extend()
@@ -140,7 +143,7 @@ class Overview(object):
 		self.xy = (x,y)
 		
 		self.ca.set_data(*self.data.domain('cytosol')['calcium'].evolution(x,y))
-		self.erca.set_data(*self.data.domain('er')['calcium'].evolution(x,y))
+		#self.erca.set_data(*self.data.domain('er')['calcium'].evolution(x,y))
 		#self.states.legend([r, a, o, i], ["resting","active","open","inhibited"], loc=2)
 
 	def update_stats(self):

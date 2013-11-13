@@ -15,11 +15,13 @@ from IPython.core.pylabtools import print_figure
 
 #~ At the moment the data in the csv is arranged as follows:
 #~ time | channel id | cluster id | transition | open channels | open clusters | channels x state | channels x calciumlevel
-def types(channels):
-	return [('t', float), ('chid', int), ('clid', int), ('tr','>S18'), ('noch',int),('nocl',int), ('states',int,(channels,8)), ('cy-calcium',float,(channels)), ('er-calcium',float,(channels))]
 
-	ct = '<i'+str(int(numpy.floor(numpy.log10(channels)+1)))
-	return [('t', float), ('chid', ct), ('clid', ct), ('tr','>S18'), ('noch',ct),('nocl',ct), ('states','<i1',(channels,8)), ('cy-calcium',float,(channels)), ('er-calcium',float,(channels))]
+def types_ascii(channels):
+	return [('t', numpy.double), ('chid', numpy.int32), ('clid', numpy.int32), ('tr','>S18'), ('noch',numpy.int32),('nocl',numpy.int32), ('states',numpy.byte,(channels,8))] #''
+
+def types_binary(channels):
+	return [('t', numpy.double), ('chid', numpy.int32), ('clid', numpy.int32), ('noch',numpy.int32),('nocl',numpy.int32), ('states',numpy.byte,(channels,8))]
+
 
 X000 = 0
 X001 = 1
@@ -30,36 +32,98 @@ X101 = 5
 X110 = 6
 X111 = 7
 
-class Rates(object):
-	pass
-	
-ip3   = None
-rates = Rates()
-
-def loadrates(config):
-	global rates
-	rates.a1 = config.getfloat('DYKModel','a1')
-	rates.a2 = config.getfloat('DYKModel','a2')
-	rates.a3 = config.getfloat('DYKModel','a3')
-	rates.a4 = config.getfloat('DYKModel','a4')
-	rates.a5 = config.getfloat('DYKModel','a5')
-	
-	try:
-		rates.b1 = config.getfloat('DYKModel','b1')
-		rates.b2 = config.getfloat('DYKModel','b2')
-		rates.b3 = config.getfloat('DYKModel','b3')
-		rates.b4 = config.getfloat('DYKModel','b4')
-		rates.b5 = config.getfloat('DYKModel','b5')
-	except NoOptionError:
-		rates.b1 = rates.a1 * config.getfloat('DYKModel','dc1')
-		rates.b2 = rates.a2 * config.getfloat('DYKModel','dc2')
-		rates.b3 = rates.a3 * config.getfloat('DYKModel','dc3')
-		rates.b4 = rates.a4 * config.getfloat('DYKModel','dc4')
-		rates.b5 = rates.a5 * config.getfloat('DYKModel','dc5')
+# return the number of open channels for each row in data
+def noch_single(data):
+	return (data['states'][:,X110]>=3).sum(axis = 1)
 		
-	global ip3
-	ip3 = config.getfloat('DYKModel','ip3')
+def available_single(data):
+	withip3    = data['states'][:,[X100,X110,X111,X101]].sum(axis=1)
+	# the number of totally available channels (i.e. channels that have enough ip3 bound)
+	return (withip3>=3).sum()
+	
+def withip3_single(data):
+	return available_single(data)
 
+def inhibited_single(data):
+	return data['states'][:,[X101,X111]].sum(axis=1)
+
+
+# return the number of open channels for each row in data
+def noch(data):
+	tmp = data['states'] if hasattr(data,'states') else data;
+	return (tmp[:,:,X110]>=3).sum(axis = 1)
+	
+# returns number of channels that have more then two subunits with ip3 bound
+def available(data):
+	tmp = data['states'] if hasattr(data,'states') else data;
+	return (tmp[:,:,[X100,X110,X111,X101]].sum(axis=2) > 2).sum(axis = 1)
+	
+# return the number of channels that have 3 or more subunits in active or open state (i.e. that have ip3 and activating calcium bound) but are NOT open yet
+def active(data):
+	tmp = data['states'] if hasattr(data,'states') else data;
+	return (numpy.logical_and(tmp[:,:,[X100,X110]].sum(axis=2) >= 3, tmp[:,:,X110] < 3 )).sum(axis = 1)
+	
+# returns number of subunits that have no ip3 bound
+def noip3(data):
+	tmp = data['states'] if hasattr(data,'states') else data;
+	return tmp[:,:,[X000,X010,X011,X001]].sum(axis=1).sum(axis = 1)
+
+# return the number of subunits that have ip3 bound
+def withip3(data):
+	tmp = data['states'] if hasattr(data,'states') else data;
+	return tmp[:,:,[X100,X110,X111,X101]].sum(axis=1).sum(axis = 1)
+
+# return number of subunits that are inhibited, but still have ip3 bound
+def inhibited(data):
+	tmp = data['states'] if hasattr(data,'states') else data;
+	return tmp[:,:,[X101,X111]].sum(axis=1).sum(axis = 1)
+
+class Rates(object):
+	# the K_i are identical to the d_i or dc_i. they are all defined as b_i/a_i
+	def __init__(self,config):
+		self.a1 = config.getfloat('DYKModel','a1')
+		self.a2 = config.getfloat('DYKModel','a2')
+		self.a3 = config.getfloat('DYKModel','a3')
+		self.a4 = config.getfloat('DYKModel','a4')
+		self.a5 = config.getfloat('DYKModel','a5')
+		
+		try:
+			self.b1 = config.getfloat('DYKModel','b1'); self.d1 = self.b1/self.a1;
+			self.b2 = config.getfloat('DYKModel','b2'); self.d2 = self.b2/self.a2;
+			self.b3 = config.getfloat('DYKModel','b3'); self.d3 = self.b3/self.a3;
+			self.b4 = config.getfloat('DYKModel','b4'); self.d4 = self.b4/self.a4;
+			self.b5 = config.getfloat('DYKModel','b5'); self.d5 = self.b5/self.a5;
+		except NoOptionError:
+			self.d1 = config.getfloat('DYKModel','dc1'); self.b1 = self.d1*self.a1;
+			self.d2 = config.getfloat('DYKModel','dc2'); self.b2 = self.d2*self.a2;
+			self.d3 = config.getfloat('DYKModel','dc3'); self.b3 = self.d3*self.a3;
+			self.d4 = config.getfloat('DYKModel','dc4'); self.b4 = self.d4*self.a4;
+			self.d5 = config.getfloat('DYKModel','dc5'); self.b5 = self.d5*self.a5;
+			
+	def __repr__(self):
+		fs = "a{i:0d} = {a:6.2f}, b{i:0d} = {b:8.5f} => d{i:0d} = {d:6.3f}"
+		return fs.format(i=1,a=self.a1,b=self.b1,d=self.d1)+"\n"\
+			  +fs.format(i=2,a=self.a2,b=self.b2,d=self.d2)+"\n"\
+			  +fs.format(i=3,a=self.a3,b=self.b3,d=self.d3)+"\n"\
+			  +fs.format(i=4,a=self.a4,b=self.b4,d=self.d4)+"\n"\
+			  +fs.format(i=5,a=self.a5,b=self.b5,d=self.d5)
+		
+class SteadyState(Rates):
+	def __init__(self, config):
+		super(SteadyState, self).__init__(config)
+	
+	def Z(self,ca,ip3 = None):
+		ip3 = self.ip3 if ip3 == None else ip3
+		return 1 + ca/self.d4 + ca/self.d5 + ca*ca/(self.d4*self.d5) + ip3/self.d1 + ip3*ca/(self.d1*self.d2) + ip3*ca/(self.d1*self.d5) + ip3*ca*ca/(self.d1*self.d2*self.d5)
+	
+	def w110(self,ca,ip3=None):
+		ip3 = self.ip3 if ip3 == None else ip3
+		return ip3*ca/(self.d1*self.d5*self.Z(ca,ip3))
+		
+	def Popen(self,ca,ip3 = None):
+		ip3 = self.ip3 if ip3 == None else ip3
+		w110 = self.w110(ca,ip3)
+		return numpy.power(w110,4) + 4* numpy.power(w110,3)*(1-w110)
 
 class Propensities(object):
 	def __init__(self, state, cc):
@@ -69,9 +133,6 @@ class Propensities(object):
 		
 		p = numpy.ndarray(shape = (8,8))
 		p[:,:] = -1
-		
-		global rates
-		global ip3
 		
 		p[X000][X010] = state[X000] * rates.a5 * cc;  # to X010 activating calcium bind
 		p[X000][X001] = state[X000] * rates.a4 * cc;  # to X001 inhibiting calcium bind

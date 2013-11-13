@@ -16,13 +16,16 @@ class Channel(object):
 		self.__cluster = infos['cluster']
 		self.__eventdata = eventdata
 #		self.__simulation = simulation
-		
+		self.__simulation = None;
 		self.__state   = None;
 	
 	
 	#~ return the event array for this channel
 	def events(self):
 		return self.state();
+		
+	def setSimulation(self,sim):
+		self.__simulation = sim
 	
 	# deprecated
 	def state(self):
@@ -33,8 +36,8 @@ class Channel(object):
 			initialstate = data['states'][0][i]
 			finalstate   = [data['states'][-1][i]]
 			
-			initialtime  = self.__simulation.tmin()
-			finaltime    = self.__simulation.tmax()
+			initialtime  = self.__eventdata.tmin()
+			finaltime    = self.__eventdata.tmax()
 			
 			frames  = data[data['chid'] == i]['t']
 			states  = data[data['chid'] == i]['states'][:,i]
@@ -111,9 +114,10 @@ class Channel(object):
 		t1,cy = self.__simulation.domain('cytosol')['calcium'].evolution(x,y)
 		t2,er = self.__simulation.domain('er')['calcium'].evolution(x,y)
 		
-		state = self.state()
+		f,s = self.state()
 		
-		mask = [self.__simulation._events.state('open')['condition'](state(ti)) for ti in t1]
+		import dyk
+		mask = 1#s[:,dyk.X110]>=3
 		current = r*r*math.pi*2*fa*self.fluxcoefficient()*(1E-6*1E-24)*1E12 * (er-cy)*mask
 		
 		return t1,current

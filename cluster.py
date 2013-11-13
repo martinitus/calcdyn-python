@@ -10,18 +10,17 @@ class Puff(object):
 		#print "created puff", self.start(), self.end(), self.duration(), self.peak()
 	
 	
-	def trajectory(self, dt):
-		for t in numpy.arange(start = self.start(),stop = self.end(),step = dt):
-			yield self.__events[self._events['t'].searchsorted(t)]
+	def trajectory(self, dt, start = None, stop = None):
+		start = self.start() if start == None else start;
+		stop  = self.end()   if stop  == None else stop;
+		for t in numpy.arange(start = start,stop = stop,step = dt):
+			yield self.__events[self.__events['t'].searchsorted(t)]
 	
 	def peak(self):
 		return self.__events['noch'].max()
-	
-	def available(self):
-		frame = self.__events['states']
-		withip3    = frame[:,[dyk.X100,dyk.X110,dyk.X111,dyk.X101]].sum(axis=1)
-		# the number of totally available channels (i.e. channels that have enough ip3 bound)
-		return (withip3>=3).sum()
+		
+	def events(self):
+		return self.__events
 		
 	def start(self):
 		return self.__events['t'][0]
@@ -85,12 +84,17 @@ class Cluster(object):
 					self.__puffs[tolerance][-1][1] = i
 				
 				wasopen = isopen
+				
+			# finished calculation, transform raw data to list of puff objects
+			self.__puffs[tolerance] = [Puff(self,puff[0],puff[1]) for puff in self.__puffs[tolerance]]
+		
 		
 		# at this point we have calculated the new data, and also the puffs event data
-		puffs = self.__puffs[tolerance]	
+		#~ puffs = self.__puffs[tolerance]	
 		
-		for puff in puffs:
-			yield Puff(self,puff[0],puff[1])
+		#~ for puff in puffs:
+		#	#~ yield Puff(self,puff[0],puff[1])
+		return self.__puffs[tolerance]
         
         
         
@@ -119,7 +123,8 @@ class Cluster(object):
 			self.__events['t']       = data[eventmask]['t']			
 			self.__events['states']  = data[eventmask]['states'][:,cidx,:]
 			
-			# cache the number of open channels
-			opencondition = self.__eventdata._states['open']['condition']
-			self.__events['noch']    = numpy.apply_along_axis(opencondition,2,self.__events['states']).sum(axis = 1)
+			# cache the number of open channels			
+			model =  self.__eventdata.model()
+			self.__events['noch'] = model.noch(self.__events)
+			
 		return self.__events

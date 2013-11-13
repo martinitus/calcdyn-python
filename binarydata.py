@@ -1,30 +1,10 @@
 import os
 import numpy
 import scipy.spatial
-import scipy.interpolate.interpnd
 import scipy.integrate
-import timeline
+import scipy.interpolate
 
-class Domain(dict):
-	def __init__(self, path, name, components = ['calcium'],**kwargs):
-		super(Domain, self).__init__()
-		# the name of the domain
-		self.name       = name		
-		# create empty dictionary
-		#self.components = {}
-		# fill the dictionary with the corresponding data sets
-		for component in components:
-			try:
-				self[component] = SpatialData(path,self.name + '.' + component,**kwargs)
-			except:
-				pass
-			
-	def components(self):
-		return self.keys();
-			
-	#def __repr__(self):
-	#	return self.components.__repr__()
-
+from scipy.interpolate import LinearNDInterpolator,  interp1d
 
 class SpatialData(object):
 	
@@ -182,9 +162,17 @@ class SpatialData(object):
 			y=args[1]
 		else:
 			raise Exception("dondt know what to do with:" + str(args))
-		interpolator  = scipy.interpolate.LinearNDInterpolator(self.__nodes, self.__transposed)
+		interpolator  = LinearNDInterpolator(self.__nodes, self.__transposed)
 		interpolation = interpolator([[x,y]])[0]
 		return self.__frames, interpolation
+		
+	def linescan(self,tmin,tmax,xmin,xmax,y,dt=0.001,dx=1):
+		sinterpolator  = LinearNDInterpolator(self.nodes(),self.data(transposed = True))
+		#interpolate in space
+		sinterpolation = sinterpolator([[x,y] for x in numpy.linspace(xmin,xmax, (xmax-xmin)/dx)])
+		# regularize grid in time
+		tinterpolator = interp1d(self.frames(),sinterpolation,axis = 1)
+		return tinterpolator(numpy.linspace(tmin,tmax,(tmax-tmin) / dt)),numpy.linspace(tmin,tmax,(tmax-tmin) / dt),numpy.linspace(xmin,xmax, (xmax-xmin)/dx)
 	
 	
 	# retrief a interpolator object for 2D slice at given time
@@ -192,7 +180,7 @@ class SpatialData(object):
 		#datas         = self.data.swapaxes(0,1)
 		
 		# create time domain interpolator
-		timeinterpol  = scipy.interpolate.interp1d(self.__frames,self.__data,axis = 0)
+		timeinterpol  = interp1d(self.__frames,self.__data,axis = 0)
 		
 		# calculate scattered data values for time t
 		return timeinterpol(t)

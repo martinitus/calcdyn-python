@@ -50,11 +50,11 @@ class EventData(object):
 		assert(self._channelcount == len(channeldata))
 		
 		if os.path.exists(os.path.join(path, 'transitions.bin')) and not refresh:		
-			self._data = numpy.fromfile(os.path.join(path, 'transitions.bin'),dtype = self._model.types(channelcount))
+			self._data = numpy.fromfile(os.path.join(path, 'transitions.bin'),dtype = self._model.types_binary(self._channelcount))
 		else:
-			self._data   = numpy.genfromtxt(os.path.join(path, 'transitions.csv'),dtype = self._model.types(channelcount))
+			self._data   = numpy.loadtxt(os.path.join(path, 'transitions.csv'),dtype = self._model.types_ascii(self._channelcount))
 			# write binary file for smaller processing
-			self._data.tofile(os.path.join(path, 'transitions.bin'))			
+			self._data[['t','chid','clid','noch','nocl','states']].tofile(os.path.join(path, 'transitions.bin'))			
 			
 		self._channels = [Channel(line, self) for line in channeldata]
 			
@@ -79,6 +79,9 @@ class EventData(object):
 		
 	def cluster(self, i):
 		return self._clusters[i]
+		
+	def model(self):
+		return self._model
 		
 	def openchannels(self):
 		return self.observe(lambda x: x['noch'],desc = 'open')
