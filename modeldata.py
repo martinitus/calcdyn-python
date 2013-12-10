@@ -1,8 +1,9 @@
 import os
 import numpy
 import csv
+import warnings
 
-from timeline import TimeLine
+#from timeline import TimeLine
 from channel import Channel
 from cluster import Cluster
 
@@ -22,7 +23,7 @@ channelmodels['RyRModel']      = ryanodine
 
 class EventData(object):
 	
-	def __init__(self, path, refresh = False):
+	def __init__(self, path, refresh = False, transitions = False):
 		
 		self.config = ConfigParser.RawConfigParser()
 		self.config.read(path + "/parameters.txt")
@@ -54,7 +55,13 @@ class EventData(object):
 		else:
 			self._data   = numpy.loadtxt(os.path.join(path, 'transitions.csv'),dtype = self._model.types_ascii(self._channelcount))
 			# write binary file for smaller processing
-			self._data[['t','chid','clid','noch','nocl','states']].tofile(os.path.join(path, 'transitions.bin'))			
+			self._data[['t','chid','clid','noch','nocl','states']].tofile(os.path.join(path, 'transitions.bin'))
+			
+		if transitions:
+			selection = numpy.roll((self._data['noch'][1:]!=self._data['noch'][:-1]),1)
+			selection[0] = True
+			selection[-1] = False
+			self._data = self._data[selection]
 			
 		self._channels = [Channel(line, self) for line in channeldata]
 			
@@ -99,9 +106,9 @@ class EventData(object):
 	def data(self):
 		return self._data 
      
-	#~ return number of events
+	# get a raw handle on the data
 	def events(self):
-		return self._data.shape[0]
+		return self._data 
 	
 	def tmin(self):
 		return self._data[0]['t']
@@ -124,6 +131,7 @@ class EventData(object):
     #~ and return an array of booleans indicating wether the condition is true or false for the given frame
     #~ the first and last intervall
 	def intervalls(self, condition, frames = False):
+		warnings.warn("deprecated use simulation.intervalls insead", DeprecationWarning)
 		selection = condition(self._data)
 		#print 'selection',selection
 		#selection = numpy.append(selection, [False])
@@ -172,12 +180,12 @@ class EventData(object):
 		return self.data[f,1+channel]
 		'''
 	# get the dictionary defining the given state	
-	def state(self,state):
-		return self._states[state]
+	#def state(self,state):
+	#	return self._states[state]
 	
 	# get the dictionary of predefined states
-	def states(self):
-		return self._states
+	#def states(self):
+	#	return self._states
 	'''def states(self,frame = None, time = None):
 		if frame != None:
 			assert(time == None)			
@@ -185,28 +193,10 @@ class EventData(object):
 			assert(frame == None)
 			frame = self.frame(time)			
 		return self._data[frame,1:1+self.channelcount()]'''
-		
-	#~ return the smallest frame number past the given time	
-	def frame(self, time, fmin = 0, fmax = -1):
-		if fmax == -1:
-			fmax = self.events()-1
-			
-		#~ print 'time',time,'fmin',fmin,'fmax',fmax
-		#abort recursion
-		if fmax - fmin == 1:
-			return fmin
-			
-		f = fmin + (fmax-fmin)/2
-		#search in left hand side
-		if self._data[f]['t'] > time:
-			#~ print 'lhs'
-			return self.frame(time,fmin,f)
-		#search in right hand side
-		if self._data[f]['t'] <= time:
-			#~ print 'rhs'
-			return self.frame(time,f,fmax)
-		
-		raise Exception("should never be reached...")
 	
+	def state(self,t):
+		''' return the state of the system for time t'''
+		f = self._data['t'].searchsorted(t)
+		return self._data[f]
 
 

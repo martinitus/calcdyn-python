@@ -6,8 +6,12 @@ class Puff(object):
 		self.__cluster = cluster
 		self.__start   = firstframe
 		self.__end     = lastframe
-		self.__events = cluster.events()[firstframe:lastframe]
+		self.__events  = cluster.events()[firstframe:lastframe]
+		
+		self.__model = cluster.model()
 		#print "created puff", self.start(), self.end(), self.duration(), self.peak()
+		for attribute in self.__model.collective_event_attributes():
+			self.__dict__[attribute.name] = attribute.value(self.__events)
 	
 	
 	def trajectory(self, dt, start = None, stop = None):
@@ -31,11 +35,25 @@ class Puff(object):
 	def duration(self):
 		return self.end()-self.start()
 		
+	def model(self):
+		return self.__model
+		
+	# return the time integral over the number of open channels
+	def accumulated(self):
+		no = self.__events['noch']
+		t =  self.__events['t']
+		dts = (t[1:]-t[:-1])
+		return numpy.dot(no[:-1],dts)
+	
+	def average(self):
+		return self.accumulated()/self.duration()
+		
 
 class Cluster(object):
 	def __init__(self, index , channels, eventdata):
 		self._channels = channels
 		self.__eventdata = eventdata
+		self.__model = eventdata.model()
 		#self.__simulation = simulation
 		self.__events = None
 		self.__index  = index
@@ -50,6 +68,8 @@ class Cluster(object):
 		for c in self._channels:
 			yield c
 	
+	def model(self):
+		return self.__model
 
 	# return iterable for iteration over puffs
 	def puffs(self, tolerance = 0.005):
@@ -85,8 +105,8 @@ class Cluster(object):
 				
 				wasopen = isopen
 				
-			# finished calculation, transform raw data to list of puff objects
-			self.__puffs[tolerance] = [Puff(self,puff[0],puff[1]) for puff in self.__puffs[tolerance]]
+			# finished calculation, transform raw data to list of puff objects, NOTE: add +1 to include the last close event
+			self.__puffs[tolerance] = [Puff(self,puff[0],puff[1]+1) for puff in self.__puffs[tolerance]]
 		
 		
 		# at this point we have calculated the new data, and also the puffs event data
@@ -117,10 +137,11 @@ class Cluster(object):
 			eventmask[-1] = True
 
 			#create recarray that stores the events of this cluster
-			self.__events = numpy.recarray(shape = (eventmask.sum()),dtype = [('t', '<f8'), ('noch', '<i2'), ('states', '|i1', (len(cidx), 8))])
+			self.__events = numpy.recarray(shape = (eventmask.sum()),dtype = [('t', '<f8'), ('noch', '<i2'), ('chid', int), ('states', '|i1', (len(cidx), 8))])
 
 			# copy time chid and subspace of state column to new recarray
-			self.__events['t']       = data[eventmask]['t']			
+			self.__events['t']       = data[eventmask]['t']
+			self.__events['chid']    = data[eventmask]['chid']
 			self.__events['states']  = data[eventmask]['states'][:,cidx,:]
 			
 			# cache the number of open channels			

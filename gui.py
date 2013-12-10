@@ -12,20 +12,21 @@ class Overview(object):
 		
 		self.data   = dataset
 		
-		self.spatial_data = dataset.domain('cytosol')['calcium']
+		self.spatial_data = dataset.cytosol.calcium
 		
 		self.fig = plt.figure(self.data.path)
 		self.fig.subplots_adjust(left = 0.06, bottom = 0.04, right = 0.97, top = 0.97, wspace = 0.05, hspace = 0.05)
 
 		#~ Create for subplots with shared axes for the right side
 		self.states        = self.fig.add_subplot(2,2,1)
-		self.stats         = self.fig.add_subplot(2,2,2)
+		self.model         = self.fig.add_subplot(2,2,2,sharex=self.states)
 		self.concentration = self.fig.add_subplot(2,2,3,sharex=self.states)
 		self.spatial       = self.fig.add_subplot(2,2,4)
 		
 		# set up grids
 		self.states.grid(True)
 		self.concentration.grid(True)
+		self.model.grid(True)
 		
 		# set up thick horizontal base line
 		self.states.axhline(0, color='black', lw=2)
@@ -44,6 +45,9 @@ class Overview(object):
 
 		# plot number of open channels
 		self.noch = self.states.plot(self.data.events().data()['t'],self.data.events().data()['noch'])
+		
+		# plot model specific information
+		self.data.events().model().overview(self.model,self.data.events())
 		
 		# plot calcium evolution at center
 		self.xy    = self.spatial_data.center()
@@ -142,7 +146,7 @@ class Overview(object):
 	def set_location(self,x,y):
 		self.xy = (x,y)
 		
-		self.ca.set_data(*self.data.domain('cytosol')['calcium'].evolution(x,y))
+		self.ca.set_data(*self.spatial_data.evolution(x,y))
 		#self.erca.set_data(*self.data.domain('er')['calcium'].evolution(x,y))
 		#self.states.legend([r, a, o, i], ["resting","active","open","inhibited"], loc=2)
 

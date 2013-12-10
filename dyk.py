@@ -54,9 +54,20 @@ def noch(data):
 	return (tmp[:,:,X110]>=3).sum(axis = 1)
 	
 # returns number of channels that have more then two subunits with ip3 bound
-def available(data):
+def available(data,N = None):
 	tmp = data['states'] if hasattr(data,'states') else data;
-	return (tmp[:,:,[X100,X110,X111,X101]].sum(axis=2) > 2).sum(axis = 1)
+	if len(tmp.shape) == 3:
+		assert(tmp.shape[2] == 8)
+		if not N:
+			return (tmp[:,:,[X100,X110,X111,X101]].sum(axis=2) > 2).sum(axis = 1)
+		else:
+			return (tmp[:,:,[X100,X110,X111,X101]].sum(axis=2) == N).sum(axis = 1)
+	elif len(tmp.shape) == 2:
+		assert(tmp.shape[1] == 8)
+		if not N:
+			return (tmp[:,[X100,X110,X111,X101]].sum(axis=1) > 2).sum()
+		else:
+			return (tmp[:,[X100,X110,X111,X101]].sum(axis=1) == N).sum()
 	
 # return the number of channels that have 3 or more subunits in active or open state (i.e. that have ip3 and activating calcium bound) but are NOT open yet
 def active(data):
@@ -66,17 +77,74 @@ def active(data):
 # returns number of subunits that have no ip3 bound
 def noip3(data):
 	tmp = data['states'] if hasattr(data,'states') else data;
-	return tmp[:,:,[X000,X010,X011,X001]].sum(axis=1).sum(axis = 1)
+	if len(tmp.shape) == 3:
+		assert(tmp.shape[2] == 8)
+		return tmp[:,:,[X000,X010,X011,X001]].sum(axis=1).sum(axis = 1)
+	elif len(tmp.shape) == 2:
+		assert(tmp.shape[1] == 8)
+		return tmp[:,[X000,X010,X011,X001]].sum()
 
 # return the number of subunits that have ip3 bound
 def withip3(data):
 	tmp = data['states'] if hasattr(data,'states') else data;
-	return tmp[:,:,[X100,X110,X111,X101]].sum(axis=1).sum(axis = 1)
+	if len(tmp.shape) == 3:
+		assert(tmp.shape[2] == 8)
+		return tmp[:,:,[X100,X110,X111,X101]].sum(axis=1).sum(axis = 1)
+	elif len(tmp.shape) == 2:
+		assert(tmp.shape[1] == 8)
+		return tmp[:,[X100,X110,X111,X101]].sum()
 
 # return number of subunits that are inhibited, but still have ip3 bound
 def inhibited(data):
 	tmp = data['states'] if hasattr(data,'states') else data;
 	return tmp[:,:,[X101,X111]].sum(axis=1).sum(axis = 1)
+	
+	
+def overview(ax1,data):
+	ax2 = ax1.twinx()
+	frames=data.events()['t']
+	states=data.events()['states']
+	#shademask    = (states[:,:,dyk.X110] >=3).any(axis = 1)*70
+	#plt.plot(frames,states[:,:,dyk.X000].sum(axis=1),lw=1)#,label = 'X000')
+	#plt.plot(frames,states[:,:,dyk.X001].sum(axis=1),lw=1)#,label = 'X001')
+	#plt.plot(frames,states[:,:,dyk.X100].sum(axis=1),lw=1)#,label = 'X100')
+	#plt.plot(frames,states[:,:,dyk.X010].sum(axis=1),lw=1)#,label = 'X010')
+	#plt.plot(frames,states[:,:,dyk.X011].sum(axis=1),lw=1)#,label = 'X011')
+	#plt.plot(frames,states[:,:,dyk.X101].sum(axis=1),lw=1)#,label = 'X101')
+	#ax1.plot(frames,states[:,:,X110].sum(axis=1),lw = 1,c='gray',label = 'X110')
+	#plt.plot(frames,states[:,:,dyk.X111].sum(axis=1),lw=1)#,label = 'X111')
+	ax1.plot(frames,noip3(states),lw=1,c='black',label = '# noip3')
+	#ax1.plot(frames,inhibited(states),lw=1,c='orange',label = '# inhib')
+	#ax2.plot(frames,available(states),lw=2,c='blue',label = '# active')
+	#ax1.plot(frames,states[:,:,[dyk.X011,dyk.X001]].sum(axis=2).sum(axis=1),lw=2,c='red',label = 'inhib+noip3')
+	#ax1.fill_between(frames,shademask, alpha = 0.25,edgecolor = None,facecolor = 'gray')
+	#ax2.plot(frames,(states[:,:,[dyk.X000,dyk.X010,dyk.X011,dyk.X001]].sum(axis=2)>=1).sum(axis=1))
+	#ax2.plot(frames,(states[:,:,X110]>=3).sum(axis=1),lw = 2,c='green',label = '# open')
+	#ax2.plot(frames,16-(states[:,:,[X000,X010,X011,X001]].sum(axis=2)>=2).sum(axis=1),lw = 2,c = 'red',label = '# ip3 > 2')
+	ax2.plot(frames,(states[:,:,[X100,X110,X111,X101]].sum(axis=2)==3).sum(axis=1),lw = 2,c = 'orange',label = '# ip3 == 3')
+	#ax2.plot(frames,(states[:,:,[X100,X110,X111,X101]].sum(axis=2)==4).sum(axis=1),lw = 2,c = 'red',label = '# ip3 == 4')
+	ax1.legend(loc='upper left',title = 'subunits')
+	ax2.legend(loc='upper right',title = 'channels')
+	
+	
+class Bunch(object):
+    def __init__(self, **kwds):
+        self.__dict__.update(kwds)
+
+		# that's it!  Now, you can create a Bunch
+		# whenever you want to group a few variables:
+
+		#point = Bunch(datum=y, squared=y*y, coord=x)
+
+		# and of course you can read/write the named
+		# attributes you just created, add others, del
+		# some of them, etc, etc:
+		#if point.squared > threshold:
+		#	point.isok = 1
+	
+def collective_event_attributes():
+	return [Bunch(name = 'available_start', value = lambda x: available(x)[0]), Bunch(name = 'available_end', value = lambda x: available(x)[-1])]
+
 
 class Rates(object):
 	# the K_i are identical to the d_i or dc_i. they are all defined as b_i/a_i
@@ -224,34 +292,3 @@ states = {'open': {'name': 'open',      'condition': lambda x: x[X110]>=3,'marke
 	      'closed': {'name': 'closed',    'condition': lambda x: x[X110]<3 , 'marker': '+'},\
 	      'inhibited': {'name': 'inhibited', 'condition': lambda x: x[X101]+x[X111] + x[X001]+x[X011]>=2, 'marker':'x'},\
 	      'noip3':{'name': 'noip3',     'condition': lambda x: x[X000]+x[X001] + x[X011]+x[X010]>=2, 'marker':'*'}}
-
-
-'''
-class Data(ModelData.Data):
-	def __init__(self, path, channels):
-		
-		# define the set of data types to import from the csv
-		
-		
-		#~  load csv file and set up channel locations in base class
-		super(Data, self).__init__(path, types)
-
-	def open(self):
-		return self.observe(lambda x: x['noch'],desc = 'open')
-		
-	def _repr_svg_(self):
-		fig,ax=plt.subplots(figsize=(10,3))
-		
-		ax.grid(True)
-		ax.axhline(0, color='black', lw=2)
-		ax.set_ylabel('channels')
-		ax.set_xlabel('time [s]')
-	
-		#~ Plot the state evolution to axes object			
-		self.open().plot(     ax,  c='red',  lw=2)
-		ax.legend(loc=2)
-		
-		data = print_figure(fig,'svg')
-		plt.close(fig)
-		return data.decode('utf-8')
-'''

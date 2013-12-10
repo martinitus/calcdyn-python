@@ -3,11 +3,100 @@ import numpy
 import scipy.spatial
 import scipy.integrate
 import scipy.interpolate
+from progressbar import ConsoleProgressBar as ProgressBar
 
 from scipy.interpolate import LinearNDInterpolator,  interp1d
 
-class SpatialData(object):
+# get a chunk of frames from a binary file
+def chunks(f,framesize,blocksize=1000):
+    f.seek(0,os.SEEK_END)
+    frames = f.tell()/4/framesize
+    blocks = frames/blocksize
+    f.seek(0,os.SEEK_SET)
+    for i in range(blocks):
+        f.seek(i*blocksize*framesize*4, os.SEEK_SET)
+        yield numpy.fromfile(f,dtype=(numpy.float32,(framesize,)),count = blocksize)
+    #f.seek(blocks*blocksize*4,os.SEEK_SET)
+    #yield numpy.fromfile(f,dtype=(numpy.float32,(framesize,)),count = frames-(blocks+1)*blocksize-1)
+
+# downsample binary dataset of new format
+def downsample(path,dataset, verbose = True):
+    framefile = open(path + dataset + ".frames.downsampled.bin","wb")
+    datafile  = open(path + dataset + ".downsampled.bin","wb")
+    transfile = open(path + dataset + ".transposed.bin","wb")
+    
+    framesize = os.path.getsize(path + dataset + ".coordinates.bin")/4/3+1
+    frames    = os.path.getsize(path + dataset + ".bin")/4/framesize
+    f         = 0
+    if verbose: print "Downsampling " + path + dataset
+    progress = ProgressBar(frames)
+    frames   = 0
+    for chunk in chunks(open(path + dataset + ".bin","rb"),framesize):
+        assert((chunk[1:,0]>chunk[:-1,0]).all())
+
+        data = chunk[chunk[1:,0]-chunk[:-1,0]>0.0005]
+        
+        frames = frames + len(data)
+        #append the frames
+        assert((data[1:,0]>data[:-1,0]).all())
+        data[:,0].tofile(framefile)
+        #append the data
+        data[:,1:].tofile(datafile)
+        #allocate space for the transposed data
+        data[:,1:].tofile(transfile)
+        f = f + len(chunk)
+        progress(f)
+    
+    framefile.close()
+    datafile.close()
+    
+    if verbose: print "Creating transposed dataset " + path + dataset
+        
+    assert(frames == os.path.getsize(path + dataset + ".frames.downsampled.bin")/4)
+    
+    progress = ProgressBar(frames)
+    f      = 0
+    # since we load junks from the downsampled file now, a frame does not contain the time column any more, hence, framesize is decreased by one
+    for chunk in chunks(open(path + dataset + ".downsampled.bin","rb"),framesize-1):
+        data = chunk.transpose() # no time column any more, use all data
+        assert(len(data) == framesize - 1)
+        for n in range(framesize-1):
+            assert(len(data[n] == len(chunk)))
+            transfile.seek((n*frames+f)*4,os.SEEK_SET)
+            data[n].tofile(transfile)
+        f = f+len(chunk)
+        progress(f)
+
+'''
+def downsample(path,dataset,dt = 0.0006):
+	print "Downsampling: " + path + "/" + dataset			
 	
+	floats = os.path.getsize(path + dataset + ".bin")/4
+	frames = os.path.getsize(path + dataset + ".coordinates.bin")/4/3 + 1
+
+	data = numpy.memmap(path + dataset + ".bin",dtype=numpy.float32,shape=(floats/frames,frames),mode = 'r')
+	#extract frame time colums
+	frames = data[:,0]
+
+	print "calculating frame selection"
+	selection = (frames[1:]-frames[:-1])>=dt
+	selection[0] = True
+
+	print "selected:",selection.sum()
+	frames[selection].tofile(path + dataset + ".frames.downsampled.bin")
+
+	# drop frame time column
+	print "writing frame file"
+	data[selection,1:].tofile(path+dataset+".downsampled.bin")
+
+	print "Creating transposed binary data"
+	swaped = data[selection,1:].swapaxes(0,1)
+	swaped.tofile(path+dataset+".transposed.bin")
+	print "Done"
+'''
+
+
+class SpatialData(object):	
 	def __init__(self,path,dataset,refresh=False):
 		#~ TODO: make generic for 3 dimensions
 		#~~self.nodes = numpy.zeros([0,3], dtype=numpy.float32)
@@ -16,42 +105,15 @@ class SpatialData(object):
 		#~ self.interpolator  = None
 		self.triangulation = None
 		
-		
 		# read the coordinates				
-		coordfile = open(path+dataset+".coordinates.bin")					
-		self.__nodes = numpy.fromfile(coordfile, dtype=numpy.float32)
-		#print self.nodes.shape
-		#print "using 3D dataset", self.nodes.size
-		self.__nodes = numpy.reshape(self.__nodes,(self.__nodes.size / 3,3))
+		self.__nodes = numpy.fromfile(open(path+dataset+".coordinates.bin"), dtype=(numpy.float32,(3,)))
+		# drop z-coordinate
 		self.__nodes = self.__nodes[:,0:2]
 		
-		if not os.path.exists(path+dataset+".downsampled.bin") or refresh:			
-			print "Downsampling", dataset			
-			filename = path + dataset + ".bin"		
-			floats_in_file   = os.path.getsize(filename)/4		
-			framesize = self.__nodes.shape[0] + 1
-			
-			data = numpy.memmap(filename,dtype=numpy.float32,shape=(floats_in_file/framesize,framesize),mode = 'r')
-			#extract frame time colums
-			frames = data[:,0]
-			
-			print "calculating frame selection"
-			selection = (frames[1:]-frames[:-1])>0.0005
-			selection[0] = True
-			
-			print "selected:",selection.sum()
-			frames[selection].tofile(path + dataset + ".frames.downsampled.bin")
-			
-			# drop frame time column
-			print "writing frame file"
-			data[selection,1:].tofile(path+dataset+".downsampled.bin")
-			
-			print "Creating transposed binary data"
-			swaped = data[selection,1:].swapaxes(0,1)
-			swaped.tofile(path+dataset+".transposed.bin")
-			print "Done"
+		if refresh:
+			downsample(path,dataset)
 		
-		self.__frames     = numpy.fromfile(path+dataset+".frames.downsampled.bin", dtype=numpy.float32)
+		self.__frames = numpy.fromfile(path+dataset+".frames.downsampled.bin", dtype=numpy.float32)
 		
 		f = self.__frames.shape[0]
 		n = self.__nodes.shape[0]
@@ -153,7 +215,7 @@ class SpatialData(object):
 			return self.__data
 	
 	# return a frames and concentrations for given coordinate
-	def evolution(self,*args):
+	def evolution(self,*args,**kwargs):
 		if len(args) == 1:
 			x=args[0][0]
 			y=args[0][1]
@@ -162,9 +224,28 @@ class SpatialData(object):
 			y=args[1]
 		else:
 			raise Exception("dondt know what to do with:" + str(args))
-		interpolator  = LinearNDInterpolator(self.__nodes, self.__transposed)
+			
+		xmin = xmax = x
+		ymin = ymax = y
+		selection = numpy.ndarray([False])
+		# create subset of data to avoid loading the whole memory map
+		while selection.sum() < 5:
+			xmin = xmin - 10
+			xmax = xmax + 10
+			ymin = ymin - 10 
+			ymax = ymax + 10
+			selection = numpy.logical_and(numpy.logical_and(xmin<=self.__nodes[:,0],self.__nodes[:,0] <= xmax),numpy.logical_and(ymin<=self.__nodes[:,1],self.__nodes[:,1] <= ymax))
+			
+		# take respect to tmin and tmax
+		fmin  = 0 if not kwargs.has_key('tmin') else self.__frames.searchsorted(kwargs['tmin'])-1
+		fmax  = len(self.__frames)-1 if not kwargs.has_key('tmax') else self.__frames.searchsorted(kwargs['tmax'])+1
+		
+		nodes = self.__nodes[selection]
+		data  = self.__transposed[selection,fmin:fmax]
+			
+		interpolator  = LinearNDInterpolator(nodes,data)
 		interpolation = interpolator([[x,y]])[0]
-		return self.__frames, interpolation
+		return self.__frames[fmin:fmax], interpolation
 		
 	def linescan(self,tmin,tmax,xmin,xmax,y,dt=0.001,dx=1):
 		sinterpolator  = LinearNDInterpolator(self.nodes(),self.data(transposed = True))
@@ -177,16 +258,14 @@ class SpatialData(object):
 	
 	# retrief a interpolator object for 2D slice at given time
 	def snapshot(self,t):
-		#datas         = self.data.swapaxes(0,1)
+		f0 = self.frame(t)
+		f1 = f0 + 1
 		
-		# create time domain interpolator
-		timeinterpol  = interp1d(self.__frames,self.__data,axis = 0)
+		t0 = self.__frames[f0]
+		t1 = self.__frames[f1]
 		
-		# calculate scattered data values for time t
-		return timeinterpol(t)
-		
-		#create interpolator for spatial coordinates	
-		#return scipy.interpolate.LinearNDInterpolator(self.nodes, datat,fill_value = numpy.nan)		
+		# do manual interpolation to avoid loading the whole memmap
+		return self.__data[f0] + (self.__data[f1]-self.__data[f0])*(t-t0)/(t1-t0)
 	
 	def write(self, path):
 		# write coordinate file
@@ -252,30 +331,6 @@ class SpatialData(object):
 		e  = self.extend()		
 		return numpy.array([e[1]/2,e[3]/2])
 		
-		
-class NewDataFormat(SpatialData):
-	def __init__(self,path,dataset):
-		super(NewDataFormat, self).__init__(dataset)	
-		
-		filename = path + dataset + ".bin"
-		# read the coordinates				
-		coordfile = open(path+dataset+".coordinates.bin")					
-		self.nodes = numpy.fromfile(coordfile, dtype=numpy.float32)
-		#print self.nodes.shape
-		#print "using 3D dataset", self.nodes.size
-		self.nodes = numpy.reshape(self.nodes,(self.nodes.size / 3,3))
-		self.nodes = self.nodes[:,0:2]
-		
-		floats_in_file   = os.path.getsize(filename)/4
-		
-		framesize = self.nodes.shape[0] +1
-		
-		self.data = numpy.memmap(filename,dtype=numpy.float32,shape=(floats_in_file/framesize,framesize),mode = 'r')
-		#extract frame time colums
-		self.frames = self.data[:,0]
-		# drop frame time column
-		self.data = self.data[:,1:]
-
 class RankData(SpatialData):
 	two_dimensions = False
 	

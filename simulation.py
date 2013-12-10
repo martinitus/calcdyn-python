@@ -127,3 +127,33 @@ class Simulation(object):
 		print "(b_rest*fmax + (Bd_b-rest)*fmin)",(resting*fmax + (Bd-resting)*fmin)
 		
 		return total / (resting*fmax + (Bd-resting)*fmin) - 1
+	
+	
+	# TODO: subclass numpy ndarray for return values that require invervalls functionality and add the intervalls method to this subclass
+	def intervalls(self,t,d, condition, frames = False):
+		selection = condition(d)
+		#print 'selection',selection
+		#selection = numpy.append(selection, [False])
+		#~ if the condition evaluates to true for the last frame (selection[-1] == True and selection[0] == False) the following roll-xor combination will lead switch_frame[0] == True
+		switch_frames = numpy.logical_xor(numpy.roll(selection, 1), selection)
+		switch_frames[0] = selection[0] 
+		switch_frames[-1] = False # always drop unfinished intervalls
+		
+		#print 'switchframes',switch_frames
+		# detect where the the condition changes from true to false, the roll will directly mark the first and last frame where the condition is true
+		start_end = switch_frames.nonzero()[0] # make the returned 0-dimensional tuple an array
+		# we condition is true up to the end, we need drop the last transition to condition = true, since we cannot return a closed interval
+		if start_end.shape[0] % 2 == 1:
+			start_end = numpy.reshape(start_end[:-1],[start_end.size/2,2])                       # reshape the array to contain start-end pairs
+		else:
+			start_end = numpy.reshape(start_end,[start_end.size/2,2])                       # reshape the array to contain start-end pairs
+		
+		# always drop intervalls already started at t=0
+		if selection[0]:
+			start_end = start_end[1:]
+			
+		if frames:
+			return start_end
+		else:
+			# return the intervalls where the condition is true
+			return numpy.array([t[start_end[:,0]],t[start_end[:,1]]]).transpose()
