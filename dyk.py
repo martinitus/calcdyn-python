@@ -287,6 +287,8 @@ class SubUnit(object):
 	def change(self):
 		return self.influx() - self.outflux()
 
+def open(state):
+	return state[X110]>=3
 
 states = {'open': {'name': 'open',      'condition': lambda x: x[X110]>=3,'marker': 'o'},\
 	      'closed': {'name': 'closed',    'condition': lambda x: x[X110]<3 , 'marker': '+'},\

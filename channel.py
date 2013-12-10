@@ -10,48 +10,45 @@ class Channel(object):
 	'''
 	def __init__(self,infos,eventdata):
 		#print infos
-		self.__location = infos['location']
-		self.__index = infos['id']
-		self.__radius = infos['radius']
-		self.__cluster = infos['cluster']
-		self.__eventdata = eventdata
+		self.__location   = infos['location']
+		self.__index      = infos['id']
+		self.__radius     = infos['radius']
+		self.__cluster    = infos['cluster']
+		self.__eventdata  = eventdata
+		self.__model      = eventdata.model()
 #		self.__simulation = simulation
 		self.__simulation = None;
-		self.__state   = None;
-	
+		self.__events     = None;
 	
 	#~ return the event array for this channel
 	def events(self):
-		return self.state();
+		if self.__events == None:			
+			#the event data from where to extract
+			data  = self.__eventdata._data
+			
+			#select all events for this cluster
+			eventmask = data['chid'] == self.__index
+			
+			#select first and last frame
+			eventmask[0]  = True
+			eventmask[-1] = True
+			
+			#create recarray that stores the events of this channel
+			self.__events = numpy.recarray(shape = (eventmask.sum()),dtype = [('t', '<f8'), ('states', '|i1', 8)])
+			
+			# copy time chid and subspace of state column to new recarray
+			self.__events['t']       = data[eventmask]['t']
+			self.__events['states']  = data[eventmask]['states'][:,self.__index,:]
+			
+		return self.__events
 		
 	def setSimulation(self,sim):
 		self.__simulation = sim
 	
-	# deprecated
-	def state(self):
-		if self.__state == None:
-			i     = self.__index
-			data  = self.__eventdata._data
-			
-			initialstate = data['states'][0][i]
-			finalstate   = [data['states'][-1][i]]
-			
-			initialtime  = self.__eventdata.tmin()
-			finaltime    = self.__eventdata.tmax()
-			
-			frames  = data[data['chid'] == i]['t']
-			states  = data[data['chid'] == i]['states'][:,i]
-			
-			#insert initial and final state
-			states  = numpy.insert(states,0, initialstate,axis = 0)
-			states  = numpy.append(states,   finalstate,  axis = 0)
-			
-			frames  = numpy.insert(frames,0,initialtime,axis = 0)
-			frames  = numpy.append(frames,  finaltime)
-			
-			#self.__state = TimeLine(frames,states,interpolationorder = 'zero')
-			self.__state = (frames,states)
-		return self.__state
+	def state(self,t):
+		foo = self.events()
+		index = foo['t'].searchsorted(t)
+		return foo['states'][index]
 
 	def radius(self):
 		return self.__radius
@@ -66,8 +63,7 @@ class Channel(object):
 		return self.__cluster
 		
 	def open(self,t):
-		tl = TimeLine(*self.state(),interpolationorder= 'zero')
-		return self.__eventdata.state('open')['condition'](tl.at(t))
+		return self.__model.open(self.state(t))
 		
 	def fluxcoefficient(self):
 		if self.__simulation.config.has_option('membrane','pc'):
