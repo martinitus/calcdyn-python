@@ -1,1 +1,9 @@
 *.pyc
+.kdev4/
+CMakeLists.txt
+bin/
+build/
+calcdyn-python.kdev4
+contrib/
+core/
+libyay.so

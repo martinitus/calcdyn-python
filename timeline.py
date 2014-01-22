@@ -2,7 +2,7 @@
 import scipy
 import StringIO
 import matplotlib.figure
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import copy
 import numpy
 

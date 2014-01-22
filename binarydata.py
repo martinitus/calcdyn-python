@@ -21,6 +21,11 @@ def chunks(f,framesize,blocksize=1000):
 
 # downsample binary dataset of new format
 def downsample(path,dataset, verbose = True):
+    if os.path.exists(path + dataset + ".downsampled.bin"):
+        if os.path.getmtime(path + dataset + ".downsampled.bin") > os.path.getmtime(path + dataset + ".bin"):
+            if verbose: print "No need to downsample " +path+dataset, "files are up2date..."
+            return
+    
     framefile = open(path + dataset + ".frames.downsampled.bin","wb")
     datafile  = open(path + dataset + ".downsampled.bin","wb")
     transfile = open(path + dataset + ".transposed.bin","wb")

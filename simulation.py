@@ -8,7 +8,7 @@ import types
 
 from scipy import integrate
 
-from timeline import TimeLine
+#from timeline import TimeLine
 from modeldata import EventData
 from fakedata import FakeSpatialData
 from membrane import Membrane

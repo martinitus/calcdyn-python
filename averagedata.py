@@ -2,7 +2,7 @@ import ConfigParser
 import StochasticModel
 import ryanodine
 import numpy
-from timeline import TimeLine
+# from timeline import TimeLine
 
 class ConfigData(object):
     def __init__(self, path):
@@ -110,7 +110,7 @@ class RyRData(ConfigData):
         return self.__meankopen;
         
         
-import matplotlib.figure
+#import matplotlib.figure
 
 # Default plot for spatial calcium profile
 class SpatialFigure(matplotlib.figure.Figure):	

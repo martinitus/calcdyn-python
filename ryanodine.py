@@ -2,7 +2,7 @@ import StochasticModel
 import numpy as np
 import scipy
 import math
-import timeline
+#import timeline
 import deterministic
 
 

@@ -1,5 +1,6 @@
 import numpy
 import dyk
+from eventcollection import EventCollection
 
 class Puff(object):
 	def __init__(self, cluster, firstframe, lastframe):
@@ -149,3 +150,10 @@ class Cluster(object):
 			self.__events['noch'] = model.noch(self.__events)
 			
 		return self.__events
+		
+	def couplingcoefficient(self,available):
+		ec = EventCollection(self.puffs(tolerance = 0.0)).filter(lambda x: x.start()>100 and dyk.available(x.events()[0]) == available)
+		po = 1.*(ec['peak'] > 1).sum()/len(ec.events)
+		c  = 1.-(1.-po)**(1./(available-1))
+		#print "#available = ",available,":" , (ec['peak'] > 1).sum(),'/',len(ec.events),'=',round(po,2),'=> c=',round(c,2)
+		return c
