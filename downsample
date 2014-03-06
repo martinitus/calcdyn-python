@@ -20,7 +20,7 @@ if __name__ == "__main__":
     
     for dataset in ["cytosol.calcium", "er.calcium", "cytosol.stationary", "cytosol.dye", "cytosol.mobile", "cytosol.endogeneous"]:
 	if os.path.exists(path + dataset + ".bin"):
-	    binarydata.downsample(path,dataset)
+	    binarydata.downsample(path,dataset,force=True)
         
     #for ip3 in ['0.01','0.02','0.035','0.045','0.05','0.06','0.07','0.08']:
     #	downsample('/datadisk/mrueckl/data/myocyte/6nm/single-cluster/mono/ip3='+ip3+'/')

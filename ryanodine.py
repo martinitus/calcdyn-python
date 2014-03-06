@@ -1,16 +1,28 @@
-import StochasticModel
-import numpy as np
+#import StochasticModel
+import numpy
 import scipy
 import math
 #import timeline
-import deterministic
+#import deterministic
 
+def types_binary(channels):
+    return [('t', numpy.double), ('chid', numpy.int32), ('clid', numpy.int32), ('noch',numpy.int32),('nocl',numpy.int32), ('states',numpy.bool,(channels))] #''
+    
 
-''' Since the RyRModel is essentially a two state model, take all settings from the deterministic two state model'''
-def types(channels):
-	return deterministic.types(channels)
+def loadtxt(filename,channels):
+    tmp = numpy.loadtxt(filename, dtype = [('t', numpy.double), ('chid', numpy.int32), ('clid', numpy.int32),
+                                           ('tr','>S8'), ('noch',numpy.int32),('nocl',numpy.int32),
+                                           ('states','>S6',(channels))])
+                                   
+    return numpy.fromiter(itertools.izip(tmp['t'],tmp['chid'],tmp['clid'],tmp['noch'],tmp['nocl'],[[s == 'open' for s in f] for f in tmp['states']]),
+                                     dtype = types_binary(channels))
 
-states = deterministic.states
+def state_type():
+    return ('>S6')
+
+def open(state):
+    return state == 'open'
+#states = deterministic.states
 
 '''RyRModel::usage = "
 Definition of propensities a[t], CDF P[t] and probability density \[Rho][t]:
@@ -81,3 +93,9 @@ End[]
 EndPackage[]
 $ContextPath = DeleteCases[$ContextPath, "RyRModel`"]
 '''
+
+def overview(ax1,data):
+    t=data.events()['t']
+    noch=data.events()['noch']
+    ax1.plot(t,noch,lw=1,c='black',label = '# open',drawstyle = 'steps-post')
+    ax1.legend(loc='upper left')

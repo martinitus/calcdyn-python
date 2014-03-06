@@ -2,6 +2,7 @@ import os
 import numpy
 import csv
 import warnings
+import itertools
 
 #from timeline import TimeLine
 from channel import Channel
@@ -37,10 +38,10 @@ class EventData(object):
         
         self._model = channelmodels[modelname]
     
-        self._states = self._model.states   
+        #~ self._states = self._model.states   
         # the set of defined states must at least contain a definition of open and closed state
-        assert(self._states.has_key('open'))
-        assert(self._states.has_key('closed'))
+        #~ assert(self._states.has_key('open'))
+        #~ assert(self._states.has_key('closed'))
         
         # the channels 
         channeldata = numpy.genfromtxt(path + '/channels.csv', dtype=[('id', int), ('cluster', int), ('location', float, (3)), ('radius', float)])
@@ -58,7 +59,8 @@ class EventData(object):
         
         if refresh:
             print "refreshing transition data for:", path
-            tmp   = numpy.loadtxt(os.path.join(path, 'transitions.csv'),dtype = self._model.types_ascii(self._channelcount))
+            tmp = self._model.loadtxt(os.path.join(path, 'transitions.csv'),self._channelcount)
+            
             # write binary file for smaller processing
             tmp[['t','chid','clid','noch','nocl','states']].tofile(os.path.join(path, 'transitions.bin'))
 

@@ -16,6 +16,9 @@ from ConfigParser import NoOptionError
 #~ At the moment the data in the csv is arranged as follows:
 #~ time | channel id | cluster id | transition | open channels | open clusters | channels x state | channels x calciumlevel
 
+def state_type():
+    return ('|i1', 8)
+
 def types_ascii(channels):
     return [('t', numpy.double), ('chid', numpy.int32), ('clid', numpy.int32), ('tr','>S18'), ('noch',numpy.int32),('nocl',numpy.int32), ('states',numpy.byte,(channels,8))] #''
 
@@ -47,8 +50,14 @@ def withip3_single(data):
 def inhibited_single(data):
     return data['states'][:,[X101,X111]].sum(axis=1)
     
+
 def open(state):
-    return state[X110]>=3
+    '''
+    If state is a onedimensional array, returns True or false,
+    If state is multidimensional array of states, returns an array 
+    with dimension reduced by one, masking the open channels as True, closed as False.
+    '''
+    return state[...,X110]>=3
 
 # return the number of open channels for each row in data
 def noch(data):

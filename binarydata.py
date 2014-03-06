@@ -12,38 +12,48 @@ def chunks(f,framesize,blocksize=1000):
     f.seek(0,os.SEEK_END)
     frames = f.tell()/4/framesize
     blocks = frames/blocksize
+    
     f.seek(0,os.SEEK_SET)
     for i in range(blocks):
         f.seek(i*blocksize*framesize*4, os.SEEK_SET)
         yield numpy.fromfile(f,dtype=(numpy.float32,(framesize,)),count = blocksize)
-    #f.seek(blocks*blocksize*4,os.SEEK_SET)
-    #yield numpy.fromfile(f,dtype=(numpy.float32,(framesize,)),count = frames-(blocks+1)*blocksize-1)
+        
+    f.seek(blocks*blocksize*4,os.SEEK_SET)
+    yield numpy.fromfile(f,dtype=(numpy.float32,(framesize,)),count = frames-(blocks+1)*blocksize-1)
 
 # downsample binary dataset of new format
-def downsample(path,dataset, verbose = True):
-    if os.path.exists(path + dataset + ".downsampled.bin"):
-        if os.path.getmtime(path + dataset + ".downsampled.bin") > os.path.getmtime(path + dataset + ".bin"):
-            if verbose: print "No need to downsample " +path+dataset, "files are up2date..."
-            return
+def downsample(path,dataset, force = False, verbose = True):
+    if not force:
+        if os.path.exists(path + dataset + ".downsampled.bin"):
+            if os.path.getmtime(path + dataset + ".downsampled.bin") > os.path.getmtime(path + dataset + ".bin"):
+                if verbose: print "No need to downsample " +path+dataset, "files are up2date..."
+                return
     
     framefile = open(path + dataset + ".frames.downsampled.bin","wb")
     datafile  = open(path + dataset + ".downsampled.bin","wb")
     transfile = open(path + dataset + ".transposed.bin","wb")
     
     framesize = os.path.getsize(path + dataset + ".coordinates.bin")/4/3+1
+#    framesize = 5248+1
+    print "framesize ", framesize
     frames    = os.path.getsize(path + dataset + ".bin")/4/framesize
+    print "frames ", frames
     f         = 0
     if verbose: print "Downsampling " + path + dataset
     progress = ProgressBar(frames)
     frames   = 0
     for chunk in chunks(open(path + dataset + ".bin","rb"),framesize):
-        assert((chunk[1:,0]>chunk[:-1,0]).all())
-
-        data = chunk[chunk[1:,0]-chunk[:-1,0]>0.0005]
+        #print (chunk[1:,0])
+        #print (chunk[1:,0]>=chunk[:-1,0])
+        #assert((chunk[1:,0]>=chunk[:-1,0]).all())
+        #mask = chunk[1:,0]-chunk[:-1,0]>=0.0001
+        #print "masked:", len(mask) - mask.sum(),"frames"
+        #data = chunk[mask]
+        data = chunk
         
         frames = frames + len(data)
         #append the frames
-        assert((data[1:,0]>data[:-1,0]).all())
+        assert((data[1:,0]>=data[:-1,0]).all())
         data[:,0].tofile(framefile)
         #append the data
         data[:,1:].tofile(datafile)
