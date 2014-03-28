@@ -22,7 +22,7 @@ def chunks(f,framesize,blocksize=1000):
     yield numpy.fromfile(f,dtype=(numpy.float32,(framesize,)),count = frames-(blocks+1)*blocksize-1)
 
 # downsample binary dataset of new format
-def downsample(path,dataset, force = False, verbose = True):
+def downsample(path,dataset, force = False, verbose = False):
     if not force:
         if os.path.exists(path + dataset + ".downsampled.bin"):
             if os.path.getmtime(path + dataset + ".downsampled.bin") > os.path.getmtime(path + dataset + ".bin"):
@@ -145,13 +145,27 @@ class SpatialData(object):
         # reset triangulation
         self.triangulation = None
         
-    #~ t, x, and y can all be either scalar or array types, if x and y are vectors, they both need to be the same size
-    #~ if all three are vector types, the return value will be a two dimensional array containing frames in first, and spatial values in second dimension
+    #~ t and x can either be scalar or array types.
+    #~ if x is None, the interpolation is done for all nodes
+    #~ if t is None, the interpolation is done for all frames
+    #~ if both, x and t are not None, the interpolation is done for all x and all t
     #~ if t is scalar, and either, x or y are arrays, the return type will be onedimensional
-    '''def __call__(self,t = None, x = None,y = None,fill_value = numpy.nan):
-        if self.triangulation == None:
-            self.triangulation = scipy.spatial.Delaunay(self.nodes) 
+    def __call__(self,t = None, x = None,fill_value = numpy.nan):
+       
         
+        if t == None and not x == None:
+            ip = LinearNDInterpolator(self.nodes(),self.data(transposed = True))
+            r  = ip(x)
+            
+            
+            if r.shape[0] == 1:
+                # erase empty first dimension if called with only a single coordinate
+                r = r[0]
+                
+            return self.frames(), r
+        
+        
+        '''
         #~ print "x:",x
         #~ print "y:",y
         #~ print "t:",t
