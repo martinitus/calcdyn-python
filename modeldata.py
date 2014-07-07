@@ -24,11 +24,15 @@ channelmodels['RyRModel']      = ryanodine
 
 class EventData(object):
     
-    def __init__(self, path, refresh = None, transitions = False):
-        
-        self.config = ConfigParser.RawConfigParser()
-        self.config.read(path + "/parameters.txt")
-        
+    def __init__(self, sim = None, path = None, refresh = None, transitions = False):
+        if sim == None:
+            assert(path)
+            self.config = ConfigParser.RawConfigParser()
+            self.config.read(path + "/parameters.txt")
+        else:
+            path = sim.path()
+            self.config = sim.config
+                
         # the amount of contained channels
         self._channelcount = self.config.getint('ChannelSetup','channels')
         self._clustercount = self.config.getint('ChannelSetup','clusters')
@@ -36,7 +40,8 @@ class EventData(object):
         # the event data (ModelData)
         modelname = self.config.get('Meta','channelmodel')
         
-        self._model = channelmodels[modelname]
+        self.__model = channelmodels[modelname]
+        self.__transitions = None
     
         #~ self._states = self._model.states   
         # the set of defined states must at least contain a definition of open and closed state
@@ -44,43 +49,41 @@ class EventData(object):
         #~ assert(self._states.has_key('closed'))
         
         # the channels 
-        channeldata = numpy.genfromtxt(path + '/channels.csv', dtype=[('id', int), ('cluster', int), ('location', float, (3)), ('radius', float)])
+        #~ channeldata = numpy.genfromtxt(path + '/channels.csv', dtype=[('id', int), ('cluster', int), ('location', float, (3)), ('radius', float)])
         # since genfromtxt returns 1d array for single line files we need to reshape
-        if channeldata.ndim == 0:
-            channeldata = [channeldata]
+        #~ if channeldata.ndim == 0:
+            #~ channeldata = [channeldata]
         
-        assert(self._channelcount == len(channeldata))
+        #~ assert(self._channelcount == len(channeldata))
         
         if refresh == None:
-            if not os.path.exists(os.path.join(path, 'transitions.bin')):
-                refresh = True
+            if os.path.exists(os.path.join(path, 'transitions.csv')):
+                if not os.path.exists(os.path.join(path, 'transitions.bin')):
+                    refresh = True
+                else:
+                    refresh = os.path.getmtime(os.path.join(path, 'transitions.bin')) < os.path.getmtime(os.path.join(path, 'transitions.csv'))
             else:
-                refresh = os.path.getmtime(os.path.join(path, 'transitions.bin')) < os.path.getmtime(os.path.join(path, 'transitions.csv'))
+                assert(os.path.exists(os.path.join(path, 'transitions.bin')))
+                refresh = False
         
         if refresh:
             print "refreshing transition data for:", path
-            tmp = self._model.loadtxt(os.path.join(path, 'transitions.csv'),self._channelcount)
+            tmp = self.__model.loadtxt(os.path.join(path, 'transitions.csv'),self._channelcount)
             
             # write binary file for smaller processing
             tmp[['t','chid','clid','noch','nocl','states']].tofile(os.path.join(path, 'transitions.bin'))
 
         assert(os.path.exists(os.path.join(path, 'transitions.bin')))
-        self._data = numpy.fromfile(os.path.join(path, 'transitions.bin'),dtype = self._model.types_binary(self._channelcount))         
+        self._data = numpy.fromfile(os.path.join(path, 'transitions.bin'),dtype = self.__model.types_binary(self._channelcount,self._clustercount))         
         
         if transitions:
             selection = numpy.roll((self._data['noch'][1:]!=self._data['noch'][:-1]),1)
             selection[0] = True
             selection[-1] = False
             self._data = self._data[selection]
-            
-        self._channels = [Channel(line, self) for line in channeldata]
-            
-        # the cluster data 
-        self._clusters = [Cluster(i, [channel for channel in self._channels if channel.cluster() == i],self) for i in range(self._clustercount)]
-        
         
     def __repr__(self):
-        return "EventData (Channels: %d, Events: %d)" % (self._channelcount, self.events())
+        return "EventData (Channels: %d, Events: %d)" % (self._channelcount, len(self._data))
         
     def _repr_svg_(self):
         return self.open()._repr_svg_()
@@ -98,7 +101,7 @@ class EventData(object):
         return self._clusters[i]
         
     def model(self):
-        return self._model
+        return self.__model
         
     def openchannels(self):
         return self.observe(lambda x: x['noch'],desc = 'open')
@@ -116,9 +119,18 @@ class EventData(object):
     def data(self):
         return self._data 
      
-    # get a raw handle on the data
     def events(self):
+        ''' return the events recarray'''
         return self._data 
+        
+    def transitions(self):
+        '''return a recarray containing only the events where the number of open channels has changed''' 
+        if self.__transitions == None:
+            allevents = self.events()
+            nopen = self.events()['noch']
+            mask  = numpy.r_[1,numpy.diff(nopen)]
+            self.__transitions = allevents[mask != 0]
+        return self.__transitions
     
     def tmin(self):
         return self._data[0]['t']

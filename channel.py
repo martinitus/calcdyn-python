@@ -1,5 +1,6 @@
 import math
 import numpy
+import scipy
 
 #from timeline import TimeLine
 
@@ -8,20 +9,39 @@ class Channel(object):
         infos:       a tuple containing channel id, channel location and cluster id
         transitions: a list of channel transitions, the channel will extract its own transitions from the global transition list
     '''
-    def __init__(self,infos,eventdata):
-        #print infos
-        self.__location   = infos['location']
-        self.__index      = infos['id']
-        self.__radius     = infos['radius']
-        self.__cluster    = infos['cluster']
-        self.__eventdata  = eventdata
-        self.__model      = eventdata.model()
-#       self.__simulation = simulation
-        self.__simulation = None;
-        self.__events     = None;
-    
-    #~ return the event array for this channel
+    def __init__(self,sim,index):
+        from StringIO import StringIO
+        line = open(sim.path() + '/channels.csv', "r").readlines()[index]
+        
+        self.__simulation = sim
+        self.__eventdata  = sim.events()
+        self.__model      = sim.events().model()                
+        self.__events     = None
+        self.__index      = index
+        self.__transitions= None
+        self.__calcium    = None
+        self.__state      = None
+        self.__open       = None
+        
+        if sim.config.has_option('Meta','ChannelType'):
+            ct = sim.config.get('Meta','ChannelType')
+            if ct == 'SimpleChannel':
+                infos = numpy.genfromtxt(StringIO(line),dtype=[('id', int), ('cluster', int),('state',self.__model.state_type())])
+                assert(self.__index == int(infos['id']))
+        else:
+            infos = numpy.genfromtxt(StringIO(line),dtype=[('id', int), ('cluster', int), ('location', float, (3)), ('radius', float)])
+            assert(self.__index == int(infos['id']))
+            self.__location   = infos['location']      
+            self.__radius     = float(infos['radius'])
+            
+        
+        self.__cluster    = int(infos['cluster'])
+        
+    def model(self):
+        return self.__model
+
     def events(self):
+        '''return a rec array with all events of this channel'''
         if self.__events == None:           
             #the event data from where to extract
             data  = self.__eventdata._data
@@ -45,14 +65,42 @@ class Channel(object):
             self.__events['states']  = data[eventmask]['states'][:,self.__index]
             
         return self.__events
-        
-    def setSimulation(self,sim):
-        self.__simulation = sim
+
+    def transitions(self):
+        '''return a recarray containing only the events where this channel either openes or closes''' 
+        if self.__transitions == None:
+            allevents = self.events()
+            nopen = self.__model.noch(allevents)
+            mask  = numpy.r_[1,numpy.diff(nopen)]
+            self.__transitions = allevents[mask != 0]
+        return self.__transitions
+
+    def ioi(self, absolute = False):
+        '''
+            return a list of inter open intervals for this channel, i.e. the intervals this channel is closed
+            if absolute is True, return two list, first containing start times, second the durations of the intervalls
+            if absolute is False(default) return a 1D list of intervalls
+        '''
+        # skip the first frame, since it might be the
+        # initial state at t=0 and then it can corrupt statistics
+        tr = self.transitions()[1:]
+        # if the first time corresponds to a channel opening then we need to drop another frame
+        if self.__model.open(tr['states'][0]):
+            tr = tr[1:]
+            
+        if not absolute:
+            return (tr['t'][1:]-tr['t'][:-1])[::2]
+        else:
+            return tr['t'][::2], (tr['t'][1:]-tr['t'][:-1])[::2]
+
+    def ici(self):
+        '''return a list of inter closed intervals for this channel, i.e. the intervals this channel is open'''
+        tr = self.transitions()[1:]
+        if not self.__model.open(tr['states'][0]):
+            tr = tr[1:]
+        return (tr['t'][1:] - tr['t'][:-1])[::2]
     
-    def state(self,t):
-        foo = self.events()
-        index = foo['t'].searchsorted(t)
-        return foo['states'][index]
+
 
     def radius(self):
         return self.__radius
@@ -67,7 +115,22 @@ class Channel(object):
         return self.__cluster
         
     def open(self,t):
-        return self.__model.open(self.state(t))
+        '''
+         provide zero order interpolation of the channels open state for time(s) t.
+         t can either be a scalar value, or a 1d array.
+        '''
+        if not self.__open:
+            self.__open = scipy.interpolate.interp1d(self.events()['t'], self.__model.open(self.events()['states']),axis = 0,kind = 'zero')
+        return self.__open(t).astype(bool)
+        
+    def state(self,t):
+        '''
+         provide zero order interpolation of the channels state for time(s) t.
+         t can either be a scalar value, or a 1d array.
+        '''
+        if not self.__state:
+            self.__state = scipy.interpolate.interp1d(self.events()['t'], self.events()['states'],axis = 0,kind = 'zero')
+        return self.__state(t)
         
     def fluxcoefficient(self):
         if self.__simulation.config.has_option('membrane','pc'):
@@ -122,8 +185,20 @@ class Channel(object):
         
         return t1,current
         
-    def calcium(self):
-        return self.__simulation.domain('cytosol')['calcium'].evolution(self.__location[0:2])
+    def calcium(self, t = None):
+        '''
+        get the local calcium concentration of this channel.
+        if no t given, return the tuple containing t,ca as numpy arrays
+        if t given, return linear interpolated concentrations
+        '''
+        if not self.__calcium:
+            self.__calcium = self.__simulation.domain('cytosol')['calcium'].evolution(self.__location[0:2])
+            
+        if t != None:
+            ip = scipy.interpolate.interp1d(self.__calcium[0], self.__calcium[1],axis = 0,kind = 'linear')
+            return ip(t)
+        else:
+            return self.__calcium
         
         
     '''def current_fast(self):  

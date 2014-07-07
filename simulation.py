@@ -20,7 +20,7 @@ from binarydata import SpatialData
 # hold the combination of event data, spatial data and channel data
 class Simulation(object):
     def __init__(self, path,**kwargs):
-        self.path = path
+        self.__path = path
         self.config = ConfigParser.RawConfigParser()
         self.config.read(path + "/parameters.txt")
         
@@ -31,37 +31,25 @@ class Simulation(object):
         # the event data (ModelData)
         modelname = self.config.get('Meta','channelmodel')
         
-        self._events    = EventData(path,**kwargs)
+        self._events    = EventData(sim = self,**kwargs)
+        
+        # the channels need to read the channel files themselves 
+        self._channels = [Channel(self, index) for index in range(self._channelcount)]
+            
+        # the cluster data 
+        self._clusters = [Cluster(self, index, [channel for channel in self._channels if channel.cluster() == index]) for index in range(self._clustercount)]
         
         self.__domains = {}
-        for domain_name in ['cytosol','er']:
-            self.__domains[domain_name] = Domain(domain_name, self)
+        for name in self.config.get('Meta','domains').split(','):
+            self.__domains[name] = Domain(path, name, self)
             # add the domain as attribute to the simulation object
-            self.__dict__[domain_name] = self.__domains[domain_name]
-            
-            if self.config.has_section(domain_name) and self.config.has_option(domain_name,'components'):
-                for component_name in self.config.get(domain_name,'components').split(','):
-                    try:
-                        self.__domains[domain_name].add_component(component_name, SpatialData(path,domain_name + '.' + component_name, **kwargs))
-                    except IOError:
-                        print "Warning: could not load component:", domain_name, component_name
-                    
-            else:
-                self.__domains[domain_name].add_component('calcium',FakeSpatialData('calcium'))
-                
-        # the channels 
-        channeldata = numpy.genfromtxt(path + '/channels.csv', dtype=[('id', int), ('cluster', int), ('location', float, (3)), ('radius', float)])
-        
-        # since genfromtxt returns 1d array for single line files we need to reshape
-        if channeldata.ndim == 0:
-            channeldata = [channeldata]
-            
-        # set the channels simdata reference to this
-        for c in self.channels():
-            c.setSimulation(self)
+            self.__dict__[name] = self.__domains[name]
         
         # the membrane object
         self.__membrane = Membrane(self)
+        
+    def path(self):
+        return self.__path
             
     def domains(self):
         return self.__domains
@@ -82,16 +70,16 @@ class Simulation(object):
         return len(self._channels)
         
     def channels(self):
-        return self._events.channels();
+        return self._channels
         
     def clusters(self):
-        return self._events.clusters();
+        return self._clusters
         
     def channel(self,c):
-        return self._events.channel(c)
+        return self._channels[c]
         
     def cluster(self,c):
-        return self._events.cluster(c)
+        return self._clusters[c]
         
     def tmin(self):
         return self.domain('cytosol')['calcium'].tmin()

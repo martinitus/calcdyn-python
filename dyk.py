@@ -10,6 +10,8 @@ import StringIO
 #import matplotlib.pyplot as plt
 #import matplotlib
 
+import warnings
+
 from ConfigParser import NoOptionError
 #from IPython.core.pylabtools import print_figure
 
@@ -22,8 +24,12 @@ def state_type():
 def types_ascii(channels):
     return [('t', numpy.double), ('chid', numpy.int32), ('clid', numpy.int32), ('tr','>S18'), ('noch',numpy.int32),('nocl',numpy.int32), ('states',numpy.byte,(channels,8))] #''
 
-def types_binary(channels):
-    return [('t', numpy.double), ('chid', numpy.int32), ('clid', numpy.int32), ('noch',numpy.int32),('nocl',numpy.int32), ('states',numpy.byte,(channels,8))]
+def types_binary(channels,clusters = 1):
+    channels_per_cluster  = channels / clusters
+    return [('t', numpy.double), ('chid', numpy.int32), ('clid', numpy.int32), ('noch',numpy.int32),('nocl',numpy.int32), ('states',numpy.byte,(clusters,channels_per_cluster,8))]
+    
+def loadtxt(filename, channelcount):
+    return numpy.genfromtxt(filename,dtype = types_ascii(channelcount))
 
 
 X000 = 0
@@ -35,59 +41,75 @@ X101 = 5
 X110 = 6
 X111 = 7
 
-# return the number of open channels for each row in data
-def noch_single(data):
-    return (data['states'][:,X110]>=3).sum(axis = 1)
+def open(data):
+    '''
+        If state is a onedimensional array, returns True or false,
+        If state is multidimensional array of states, returns an array 
+        with dimension reduced by one, masking the open channels as True, closed as False.
+    '''
+    tmp = data['states'] if data.shape[-1] != 8 else data;
+    
+    return tmp[...,X110]>=3
+
+#~# return the number of open channels for each row in data
+#~def noch(data):
+    #~warnings.warn("deprecated", DeprecationWarning)
+    #~tmp = data['states'] if hasattr(data,'states') else data;
+    #~print tmp.shape
+    #~if len(tmp.shape) == 2:
+        #~# we only have one channel
+        #~return tmp[:,X110]>=3	
+    #~else:
+        #~# multiple channels per time
+        #~return (tmp[...,X110]>=3).sum(axis = 1)
+    
+#~# returns number of channels that have more then two subunits with ip3 bound
+#~def available(data,N = None):
+    #~warnings.warn("deprecated", DeprecationWarning)
+    #~tmp = data['states'] if hasattr(data,'states') else data;
+    #~if len(tmp.shape) == 3:
+        #~assert(tmp.shape[2] == 8)
+        #~if not N:
+            #~return (tmp[:,:,[X100,X110,X111,X101]].sum(axis=2) > 2).sum(axis = 1)
+        #~else:
+            #~return (tmp[:,:,[X100,X110,X111,X101]].sum(axis=2) == N).sum(axis = 1)
+    #~elif len(tmp.shape) == 2:
+        #~assert(tmp.shape[1] == 8)
+        #~if not N:
+            #~return (tmp[:,[X100,X110,X111,X101]].sum(axis=1) > 2).sum()
+        #~else:
+            #~return (tmp[:,[X100,X110,X111,X101]].sum(axis=1) == N).sum()
+            
+            
+def activatable(data,N = None):
+    '''
+        If data is a onedimensional array, returns True or false,
+        If data is multidimensional array of states, returns an array 
+        with dimension reduced by one, masking the activatable channels as True, closed as False.
+    '''
+    tmp = data['states'] if data.shape[-1] != 8 else data;
+    assert(tmp.shape[-1] == 8)
         
-def available_single(data):
-    withip3    = data['states'][:,[X100,X110,X111,X101]].sum(axis=1)
-    # the number of totally available channels (i.e. channels that have enough ip3 bound)
-    return (withip3>=3).sum()
+    if not N:
+        return (tmp[...,[X100,X110,X111,X101]].sum(axis=-1) > 2)
+    else:
+        return (tmp[...,[X100,X110,X111,X101]].sum(axis=-1) == N)
     
-def withip3_single(data):
-    return available_single(data)
-
-def inhibited_single(data):
-    return data['states'][:,[X101,X111]].sum(axis=1)
-    
-
-def open(state):
-    '''
-    If state is a onedimensional array, returns True or false,
-    If state is multidimensional array of states, returns an array 
-    with dimension reduced by one, masking the open channels as True, closed as False.
-    '''
-    return state[...,X110]>=3
-
-# return the number of open channels for each row in data
-def noch(data):
-    tmp = data['states'] if hasattr(data,'states') else data;
-    return (tmp[:,:,X110]>=3).sum(axis = 1)
-    
-# returns number of channels that have more then two subunits with ip3 bound
-def available(data,N = None):
-    tmp = data['states'] if hasattr(data,'states') else data;
-    if len(tmp.shape) == 3:
-        assert(tmp.shape[2] == 8)
-        if not N:
-            return (tmp[:,:,[X100,X110,X111,X101]].sum(axis=2) > 2).sum(axis = 1)
-        else:
-            return (tmp[:,:,[X100,X110,X111,X101]].sum(axis=2) == N).sum(axis = 1)
-    elif len(tmp.shape) == 2:
-        assert(tmp.shape[1] == 8)
-        if not N:
-            return (tmp[:,[X100,X110,X111,X101]].sum(axis=1) > 2).sum()
-        else:
-            return (tmp[:,[X100,X110,X111,X101]].sum(axis=1) == N).sum()
-    
-# return the number of channels that have 3 or more subunits in active or open state (i.e. that have ip3 and activating calcium bound) but are NOT open yet
 def active(data):
-    tmp = data['states'] if hasattr(data,'states') else data;
-    return (numpy.logical_and(tmp[:,:,[X100,X110]].sum(axis=2) >= 3, tmp[:,:,X110] < 3 )).sum(axis = 1)
+    '''
+        If data is a onedimensional array, returns True or false,
+        If data is multidimensional array of states, returns an array 
+        with dimension reduced by one, masking channels that have 3 or
+        more subunits in active or open state (i.e. that have ip3 and
+        activating calcium bound) but are NOT open yet as True and False otherwise.
+    '''
+    tmp = data['states'] if data.shape[-1] != 8 else data;
+    assert(tmp.shape[-1] == 8)
+    return (numpy.logical_and(tmp[...,[X100,X110]].sum(axis=-1) >= 3, tmp[...,X110] < 3 ))
     
 # returns number of subunits that have no ip3 bound
 def noip3(data):
-    tmp = data['states'] if hasattr(data,'states') else data;
+    tmp = data['states'] if data.shape[-1] != 8 else data;
     if len(tmp.shape) == 3:
         assert(tmp.shape[2] == 8)
         return tmp[:,:,[X000,X010,X011,X001]].sum(axis=1).sum(axis = 1)
@@ -97,7 +119,7 @@ def noip3(data):
 
 # return the number of subunits that have ip3 bound
 def withip3(data):
-    tmp = data['states'] if hasattr(data,'states') else data;
+    tmp = data['states'] if data.shape[-1] != 8 else data;
     if len(tmp.shape) == 3:
         assert(tmp.shape[2] == 8)
         return tmp[:,:,[X100,X110,X111,X101]].sum(axis=1).sum(axis = 1)
@@ -105,10 +127,17 @@ def withip3(data):
         assert(tmp.shape[1] == 8)
         return tmp[:,[X100,X110,X111,X101]].sum()
 
-# return number of subunits that are inhibited, but still have ip3 bound
 def inhibited(data):
-    tmp = data['states'] if hasattr(data,'states') else data;
-    return tmp[:,:,[X101,X111]].sum(axis=1).sum(axis = 1)
+    ''' return number of inhibited channels. a channel is inhibited if it has more then 2 active subunits and either one or two inhibited subunits '''
+    tmp = data['states'] if data.shape[-1] != 8 else data;
+    
+    three_active = activatable(tmp, N = 3)
+    four_active = activatable(tmp, N = 4)
+    
+    two_inhibited = tmp[...,[X101,X111]].sum(axis = -1) == 2
+    one_inhibited = tmp[...,[X101,X111]].sum(axis = -1) >= 1
+    
+    return numpy.logical_or(numpy.logical_and(three_active,one_inhibited), numpy.logical_and(four_active,two_inhibited))
     
     
 def overview(ax1,data):
@@ -154,7 +183,7 @@ class Bunch(object):
         #   point.isok = 1
     
 def collective_event_attributes():
-    return [Bunch(name = 'available_start', value = lambda x: available(x)[0]), Bunch(name = 'available_end', value = lambda x: available(x)[-1])]
+    return [Bunch(name = 'available_start', value = lambda x: activatable(x)[0].sum()), Bunch(name = 'available_end', value = lambda x: activatable(x)[-1].sum())]
 
 
 class Rates(object):
@@ -198,6 +227,14 @@ class SteadyState(Rates):
     def w110(self,ca,ip3=None):
         ip3 = self.ip3 if ip3 == None else ip3
         return ip3*ca/(self.d1*self.d5*self.Z(ca,ip3))
+        
+    def w011(self,ca,ip3=None):
+        ip3 = self.ip3 if ip3 == None else ip3
+        return ca*ca/(self.d5*self.d4*self.Z(ca,ip3))
+    
+    def w100(self,ca,ip3=None):
+        ip3 = self.ip3 if ip3 == None else ip3
+        return ip3/(self.d1*self.Z(ca,ip3))
         
     def Popen(self,ca,ip3 = None):
         ip3 = self.ip3 if ip3 == None else ip3

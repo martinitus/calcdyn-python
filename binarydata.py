@@ -112,10 +112,10 @@ def downsample(path,dataset,dt = 0.0006):
 
 
 class SpatialData(object):  
-    def __init__(self,path,dataset,refresh=False):
+    def __init__(self,path,domain,component,refresh=False):
         #~ TODO: make generic for 3 dimensions
         #~~self.nodes = numpy.zeros([0,3], dtype=numpy.float32)
-        self.dataset = dataset
+        dataset = domain.name() + '.' + component
         
         #~ self.interpolator  = None
         self.triangulation = None
@@ -245,8 +245,9 @@ class SpatialData(object):
         else:
             return self.__data
     
-    # return a frames and concentrations for given coordinate
+    
     def evolution(self,*args,**kwargs):
+        ''' return a tuplple containing (frames, concentrations) for given coordinate'''
         if len(args) == 1:
             x=args[0][0]
             y=args[0][1]

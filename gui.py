@@ -12,7 +12,7 @@ class Overview(object):
         
         self.spatial_data = dataset.cytosol.calcium
         
-        self.fig = plt.figure(self.data.path)
+        self.fig = plt.figure(self.data.path())
         self.fig.subplots_adjust(left = 0.06, bottom = 0.04, right = 0.97, top = 0.97, wspace = 0.05, hspace = 0.05)
 
         #~ Create for subplots with shared axes for the right side
@@ -66,7 +66,9 @@ class Overview(object):
         zi = self.spatial_data.grid(0,xmin,xmax,ymin,ymax,100)
         from matplotlib import colors 
         from matplotlib.colors import LogNorm
-        self.contour = self.spatial.imshow(zi,norm=LogNorm(0.02,250,clip=True),origin='lower',extent=self.spatial_data.extend(),aspect='auto')
+        #norm = LogNorm(0.02,250,clip=True)
+        norm = None
+        self.contour = self.spatial.imshow(zi,norm=norm,origin='lower',extent=self.spatial_data.extend(),aspect='auto')
                 
         from matplotlib.ticker import LogLocator, LogFormatter 
         l_f = LogFormatter(10, labelOnlyBase=False) 
