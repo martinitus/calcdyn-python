@@ -62,7 +62,7 @@ class Channel(object):
             self.__events['t']       = data[eventmask]['t']
             # this works for DYK
             #self.__events['states']  = data[eventmask]['states'][:,self.__index,:]
-            self.__events['states']  = data[eventmask]['states'][:,self.__index]
+            self.__events['states']  = data[eventmask]['states'][:,self.clusterindex(),self.__index]
             
         return self.__events
 
@@ -70,7 +70,7 @@ class Channel(object):
         '''return a recarray containing only the events where this channel either openes or closes''' 
         if self.__transitions == None:
             allevents = self.events()
-            nopen = self.__model.noch(allevents)
+            nopen = self.__model.open(allevents)
             mask  = numpy.r_[1,numpy.diff(nopen)]
             self.__transitions = allevents[mask != 0]
         return self.__transitions
@@ -110,8 +110,11 @@ class Channel(object):
         
     def index(self):
         return self.__index
-        
+    
     def cluster(self):
+        return self.__simulation.cluster(self.__cluster)
+        
+    def clusterindex(self):
         return self.__cluster
         
     def open(self,t):
@@ -187,19 +190,13 @@ class Channel(object):
         
     def calcium(self, t = None):
         '''
-        get the local calcium concentration of this channel.
-        if no t given, return the tuple containing t,ca as numpy arrays
-        if t given, return linear interpolated concentrations
+            get the local calcium concentration of this channel.
+            if no t given, return the tuple containing t,ca as numpy arrays
+            if t given, return linear interpolated concentrations.
+            This function needs to be implemented by the caclium data
+            that is attached to the simulation.
         '''
-        if not self.__calcium:
-            self.__calcium = self.__simulation.domain('cytosol')['calcium'].evolution(self.__location[0:2])
-            
-        if t != None:
-            ip = scipy.interpolate.interp1d(self.__calcium[0], self.__calcium[1],axis = 0,kind = 'linear')
-            return ip(t)
-        else:
-            return self.__calcium
-        
+        raise Warning("Not implemented")
         
     '''def current_fast(self):  
         x,y    = self.__location[0:2]

@@ -1,4 +1,5 @@
 import os
+import types
 import numpy
 import scipy.spatial
 import scipy.integrate
@@ -137,6 +138,32 @@ class SpatialData(object):
         
         self.__data       = numpy.memmap(path+dataset+".downsampled.bin",dtype = numpy.float32, shape = (f,n),mode = 'r')
         self.__transposed = numpy.memmap(path+dataset+".transposed.bin", dtype = numpy.float32, shape = (n,f),mode = 'r')
+        
+        # add calcium methods to channels
+        self.__simulation = domain.simulation()
+        
+        attrib_name = '__' + component
+        method_name = component
+        
+        def channel_concentration(channel,t = None):
+            '''
+                get the local calcium concentration of this channel.
+                if no t given, return the tuple containing t,ca as numpy arrays
+                if t given, return linear interpolated concentrations.
+            '''
+            if not attrib_name in channel.__dict__.keys():
+                channel.__dict__[attrib_name] = self.evolution(channel.location()[0:2])
+            
+            if t != None:
+                ip = scipy.interpolate.interp1d(channel.__dict__[attrib_name][0], channel.__dict__[attrib_name][1],axis = 0,kind = 'linear')
+                return ip(t)
+            else:
+                return channel.__dict__[attrib_name]
+            
+        for ch in self.__simulation.channels():
+            # bind the method to the instance only. this will avoid problems when different kinds of spatial data are loaded. 
+            # and only some of the cluster instances should have the calcium method
+            ch.__dict__[method_name] = types.MethodType( channel_concentration, ch )
     
     def select(self,xmin,xmax,ymin,ymax):
         selection = numpy.logical_and(numpy.logical_and(xmin<=self.nodes[:,0],self.nodes[:,0] <= xmax),numpy.logical_and(ymin<=self.nodes[:,1],self.nodes[:,1] <= ymax))
@@ -248,6 +275,7 @@ class SpatialData(object):
     
     def evolution(self,*args,**kwargs):
         ''' return a tuplple containing (frames, concentrations) for given coordinate'''
+       
         if len(args) == 1:
             x=args[0][0]
             y=args[0][1]

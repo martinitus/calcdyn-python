@@ -6,12 +6,27 @@ import numpy
 class EventCollection(object):
     def __init__(self, *args):
         self.events = [];
+        
         for arg in args:
             self.events = self.events+arg
-        
-        self.data = numpy.ndarray(shape = (len(self.events)),dtype = [('duration',float),('peak',int),('accumulated',float),('available@start',int),('available@end',int),('withip3@start',int),('withip3@end',int)])
+            
+        self.data = numpy.ndarray(shape = (len(self.events)),
+                                  dtype = [('duration',float),
+                                           ('peak',int),
+                                           ('accumulated',float),
+                                           ('available@start',int),
+                                           ('available@end',int),
+                                           ('withip3@start',int),
+                                           ('withip3@end',int)])
+                                           
         for (e,i) in zip(self.events,range(len(self.events))):
-            self.data[i] = (e.duration(),e.peak(),e.accumulated(),dyk.available(e.events())[0],dyk.available(e.events())[-1],dyk.withip3(e.events()[0]),dyk.withip3(e.events()[-1]))
+            self.data[i] = (e.duration(),
+                            e.peak(),
+                            e.accumulated(),
+                            dyk.activatable(e.events())[0].sum(),
+                            dyk.activatable(e.events())[-1].sum(),
+                            dyk.withip3(e.events())[0].sum(),
+                            dyk.withip3(e.events())[-1].sum())
         
     def filter(self,condition):
         return EventCollection([e for e in self.events if condition(e)])

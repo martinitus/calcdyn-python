@@ -1,55 +1,11 @@
 import numpy
 import scipy
+import myutil
 
 import dyk
+import deterministic
 from eventcollection import EventCollection
 
-class Puff(object):
-    def __init__(self, cluster, firstframe, lastframe):
-        self.__cluster = cluster
-        self.__start   = firstframe
-        self.__end     = lastframe
-        self.__events  = cluster.events()[firstframe:lastframe]
-        
-        self.__model = cluster.model()
-        #print "created puff", self.start(), self.end(), self.duration(), self.peak()
-        for attribute in self.__model.collective_event_attributes():
-            self.__dict__[attribute.name] = attribute.value(self.__events)
-    
-    
-    def trajectory(self, dt, start = None, stop = None):
-        start = self.start() if start == None else start;
-        stop  = self.end()   if stop  == None else stop;
-        for t in numpy.arange(start = start,stop = stop,step = dt):
-            yield self.__events[self.__events['t'].searchsorted(t)]
-    
-    def peak(self):
-        return self.__events['noch'].max()
-        
-    def events(self):
-        return self.__events
-        
-    def start(self):
-        return self.__events['t'][0]
-        
-    def end(self):
-        return self.__events['t'][-1]
-        
-    def duration(self):
-        return self.end()-self.start()
-        
-    def model(self):
-        return self.__model
-        
-    # return the time integral over the number of open channels
-    def accumulated(self):
-        no = self.__events['noch']
-        t =  self.__events['t']
-        dts = (t[1:]-t[:-1])
-        return numpy.dot(no[:-1],dts)
-    
-    def average(self):
-        return self.accumulated()/self.duration()
         
 
 class Cluster(object):
@@ -80,51 +36,12 @@ class Cluster(object):
     def index(self):
         return self.__index
 
-    # return iterable for iteration over puffs
-    def puffs(self, tolerance = 0.005):
-        
-        #if we do not have the data available for the asked tolerance, calculate it and store it in dictionary
-        if not self.__puffs.has_key(tolerance):
-            data = self.events()
-            
-            wasopen = data[0]['noch'] > 0
-            self.__puffs[tolerance] = []
-            
-            puffs = self.__puffs[tolerance]
-            
-            active    = False
-            lastclose = -2*tolerance
-
-            for i in range(len(data)):
-                isopen = data[i]['noch'] > 0
-                    
-                #first channel opened
-                if not wasopen and isopen:
-                    withintolerance = data[i]['t']-lastclose <= tolerance
-                
-                    if not withintolerance:
-                        self.__puffs[tolerance] = self.__puffs[tolerance] + [[i,-1]]
-            
-                #last channel closed
-                if not isopen and wasopen:
-                    lastclose = data[i]['t']    
-                    self.__puffs[tolerance][-1][1] = i
-                if isopen:
-                    self.__puffs[tolerance][-1][1] = i
-                
-                wasopen = isopen
-                
-            # finished calculation, transform raw data to list of puff objects, NOTE: add +1 to include the last close event
-            self.__puffs[tolerance] = [Puff(self,puff[0],puff[1]+1) for puff in self.__puffs[tolerance]]
-        
-        
-        # at this point we have calculated the new data, and also the puffs event data
-        #~ puffs = self.__puffs[tolerance]  
-        
-        #~ for puff in puffs:
-        #   #~ yield Puff(self,puff[0],puff[1])
-        return self.__puffs[tolerance]
-        
+    #~# return iterable for iteration over puffs
+    #~def puffs(self, tolerance = 0.005):
+        #~'''
+            #~this method needs to be implemented by a specific puff criterion 
+        #~'''
+        #~raise Warning("Not implemented")
         
         
     def channel(self,i):
@@ -136,7 +53,8 @@ class Cluster(object):
          t can either be a scalar value, or a 1d array.
         '''
         if not self.__open:
-            self.__open = scipy.interpolate.interp1d(self.events()['t'], self.__model.open(self.events()['states']),axis = 0,kind = 'zero')
+            self.__open  = myutil.ZeroOrderExtrapolation(self.events()['t'], self.__model.open(self.events()['states']))
+            #~self.__open = scipy.interpolate.interp1d(self.events()['t'], self.__model.open(self.events()['states']),axis = 0,kind = 'zero')
         return self.__open(t).astype(bool)
         
     def state(self,t):
@@ -145,12 +63,13 @@ class Cluster(object):
          t can either be a scalar value, or a 1d array.
         '''
         if not self.__state:
-            self.__state = scipy.interpolate.interp1d(self.events()['t'], self.events()['states'],axis = 0,kind = 'zero')
+            self.__state  = myutil.ZeroOrderExtrapolation(self.events()['t'], self.events()['states'])
+            #~self.__state = scipy.interpolate.interp1d(self.events()['t'], self.events()['states'],axis = 0,kind = 'zero')
         return self.__state(t)
     
     # return projection on the eventdata for this cluster
     def events(self):
-        if self.__events == None:
+        if isinstance(self.__events, types.NoneType):
             # the indices of the channels within this cluster
             cidx  = [channel.index() for channel in self]
             #print cidx
@@ -164,7 +83,10 @@ class Cluster(object):
             eventmask[-1] = True
 
             #create recarray that stores the events of this cluster
-            self.__events = numpy.recarray(shape = (eventmask.sum()),dtype = [('t', '<f8'), ('noch', '<i2'), ('chid', int), ('states', '|i1', (len(cidx), 8))])
+            if self.__model == dyk:                
+                self.__events = numpy.recarray(shape = (eventmask.sum()),dtype = [('t', '<f8'), ('noch', '<i2'), ('chid', int), ('states', '|i1', (len(cidx), 8))])
+            elif self.__model == deterministic:
+                self.__events = numpy.recarray(shape = (eventmask.sum()),dtype = [('t', '<f8'), ('noch', '<i2'), ('chid', int), ('states', bool, (len(cidx),))])
 
             # copy time chid and subspace of state column to new recarray
             self.__events['t']       = data[eventmask]['t']
@@ -179,7 +101,7 @@ class Cluster(object):
         
     def transitions(self):
         '''return a recarray containing only the events where this cluster changes the number of open channels''' 
-        if self.__transitions == None:
+        if isinstance(self.__transitions, types.NoneType):
             allevents = self.events()
             nopen = self.__model.open(allevents).sum(-1)
             mask  = numpy.r_[1,numpy.diff(nopen)]

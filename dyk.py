@@ -47,7 +47,10 @@ def open(data):
         If state is multidimensional array of states, returns an array 
         with dimension reduced by one, masking the open channels as True, closed as False.
     '''
-    tmp = data['states'] if data.shape[-1] != 8 else data;
+    if len(data.shape) == 0:
+        tmp = data['states']
+    else:
+        tmp = data['states'] if data.shape[-1] != 8 else data;
     
     return tmp[...,X110]>=3
 
@@ -120,12 +123,15 @@ def noip3(data):
 # return the number of subunits that have ip3 bound
 def withip3(data):
     tmp = data['states'] if data.shape[-1] != 8 else data;
-    if len(tmp.shape) == 3:
-        assert(tmp.shape[2] == 8)
-        return tmp[:,:,[X100,X110,X111,X101]].sum(axis=1).sum(axis = 1)
-    elif len(tmp.shape) == 2:
-        assert(tmp.shape[1] == 8)
-        return tmp[:,[X100,X110,X111,X101]].sum()
+    assert(tmp.shape[-1] == 8)
+    
+    return tmp[...,[X100,X110,X111,X101]].sum(axis = -1)
+    #if len(tmp.shape) == 3:
+    #    assert(tmp.shape[2] == 8)
+    #    return tmp[:,:,[X100,X110,X111,X101]].sum(axis=1).sum(axis = 1)
+    #elif len(tmp.shape) == 2:
+    #    assert(tmp.shape[1] == 8)
+    #    return tmp[:,[X100,X110,X111,X101]].sum()
 
 def inhibited(data):
     ''' return number of inhibited channels. a channel is inhibited if it has more then 2 active subunits and either one or two inhibited subunits '''

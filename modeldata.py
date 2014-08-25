@@ -3,6 +3,7 @@ import numpy
 import csv
 import warnings
 import itertools
+import gzip
 
 #from timeline import TimeLine
 from channel import Channel
@@ -21,6 +22,25 @@ channelmodels['RyRModel']      = ryanodine
         
 #~ At the moment the data in the csv is arranged as follows:
 #~ time | channel id | cluster id | transition | open channels | open clusters | {channel states} | {channel calciumlevels}
+import contextlib
+
+@contextlib.contextmanager
+def patch_gzip_for_partial():
+    """
+    Context manager that replaces gzip.GzipFile._read_eof with a no-op.
+
+    This is useful when decompressing partial files, something that won't
+    work if GzipFile does it's checksum comparison.
+
+    """
+    _read_eof      = gzip.GzipFile._read_eof
+    _add_read_data = gzip.GzipFile._add_read_data
+    
+    gzip.GzipFile._read_eof      = lambda *args, **kwargs: None
+    gzip.GzipFile._add_read_data = lambda *args, **kwargs: None
+    yield
+    gzip.GzipFile._read_eof      = _read_eof
+    gzip.GzipFile._add_read_data = _add_read_data
 
 class EventData(object):
     
@@ -56,25 +76,31 @@ class EventData(object):
         
         #~ assert(self._channelcount == len(channeldata))
         
-        if refresh == None:
-            if os.path.exists(os.path.join(path, 'transitions.csv')):
-                if not os.path.exists(os.path.join(path, 'transitions.bin')):
-                    refresh = True
-                else:
-                    refresh = os.path.getmtime(os.path.join(path, 'transitions.bin')) < os.path.getmtime(os.path.join(path, 'transitions.csv'))
-            else:
-                assert(os.path.exists(os.path.join(path, 'transitions.bin')))
-                refresh = False
-        
-        if refresh:
-            print "refreshing transition data for:", path
-            tmp = self.__model.loadtxt(os.path.join(path, 'transitions.csv'),self._channelcount)
-            
-            # write binary file for smaller processing
-            tmp[['t','chid','clid','noch','nocl','states']].tofile(os.path.join(path, 'transitions.bin'))
+        def load_gzip(fp):
+            f = gzip.open(fp)
+            dtype  = numpy.dtype(self.__model.types_binary(self._channelcount,self._clustercount))
+            #buff = f.read(dtype.itemsize * 100000)
+            buff = f.read()
+            return numpy.frombuffer(buff, dtype = self.__model.types_binary(self._channelcount,self._clustercount))
 
-        assert(os.path.exists(os.path.join(path, 'transitions.bin')))
-        self._data = numpy.fromfile(os.path.join(path, 'transitions.bin'),dtype = self.__model.types_binary(self._channelcount,self._clustercount))         
+        def load_bin(fp):
+            f = open(fp, 'rb')
+            return numpy.fromfile(f, dtype = self.__model.types_binary(self._channelcount,self._clustercount))
+
+        def load_csv(fp):
+            tmp = self.__model.loadtxt(fp,self._channelcount)
+            # kill all unnecessary stuff
+            return tmp[['t','chid','clid','noch','nocl','states']]
+        
+        
+        file_order = [('transitions.bin.gz', load_gzip),
+                      ('transitions.bin',    load_bin),
+                      ('transitions.csv',    load_csv),]
+        
+        for filename, openfunc in file_order:
+            if os.path.isfile(path + '/' + filename):
+                self._data = openfunc(path + '/' + filename)                
+                break
         
         if transitions:
             selection = numpy.roll((self._data['noch'][1:]!=self._data['noch'][:-1]),1)

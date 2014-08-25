@@ -37,7 +37,7 @@ class Simulation(object):
         self._channels = [Channel(self, index) for index in range(self._channelcount)]
             
         # the cluster data 
-        self._clusters = [Cluster(self, index, [channel for channel in self._channels if channel.cluster() == index]) for index in range(self._clustercount)]
+        self._clusters = [Cluster(self, index, [channel for channel in self._channels if channel.clusterindex() == index]) for index in range(self._clustercount)]
         
         self.__domains = {}
         for name in self.config.get('Meta','domains').split(','):
@@ -68,6 +68,9 @@ class Simulation(object):
     
     def channelcount(self):
         return len(self._channels)
+    
+    def clustercount(self):
+        return len(self._clusters)
         
     def channels(self):
         return self._channels
