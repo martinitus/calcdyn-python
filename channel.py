@@ -1,6 +1,7 @@
 import math
 import numpy
 import scipy
+import myutil
 
 #from timeline import TimeLine
 
@@ -34,7 +35,6 @@ class Channel(object):
             self.__location   = infos['location']      
             self.__radius     = float(infos['radius'])
             
-        
         self.__cluster    = int(infos['cluster'])
         
     def model(self):
@@ -45,10 +45,15 @@ class Channel(object):
         if self.__events == None:           
             #the event data from where to extract
             data  = self.__eventdata._data
-            
+                        
             #select all events for this cluster
             eventmask = data['chid'] == self.__index
             
+            # if there are no events return empty recarray
+            if len(data) == 0:
+                self.__events = numpy.recarray(shape = (0),dtype = [('t', '<f8'), ('states', self.__model.state_type())])
+                return self.__events
+                
             #select first and last frame
             eventmask[0]  = True
             eventmask[-1] = True
@@ -122,8 +127,10 @@ class Channel(object):
          provide zero order interpolation of the channels open state for time(s) t.
          t can either be a scalar value, or a 1d array.
         '''
+        print self.events()['t'], self.__model.open(self.events()['states'])
         if not self.__open:
-            self.__open = scipy.interpolate.interp1d(self.events()['t'], self.__model.open(self.events()['states']),axis = 0,kind = 'zero')
+            #~self.__open = scipy.interpolate.interp1d(self.events()['t'], self.__model.open(self.events()['states']),axis = 0,kind = 'zero')
+            self.__open = myutil.ZeroOrderExtrapolation(self.events()['t'], self.__model.open(self.events()['states']))
         return self.__open(t).astype(bool)
         
     def state(self,t):
