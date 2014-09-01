@@ -66,8 +66,8 @@ class Overview(object):
         zi = self.spatial_data.grid(0,xmin,xmax,ymin,ymax,100)
         from matplotlib import colors 
         from matplotlib.colors import LogNorm
-        #norm = LogNorm(0.02,250,clip=True)
-        norm = None
+        norm = LogNorm(0.02,250,clip=True)
+        #norm = None
         self.contour = self.spatial.imshow(zi,norm=norm,origin='lower',extent=self.spatial_data.extend(),aspect='auto')
                 
         from matplotlib.ticker import LogLocator, LogFormatter 
@@ -77,7 +77,8 @@ class Overview(object):
         from matplotlib.patches import Circle
         
         for channel in self.data.channels():
-            self.spatial.add_artist(Circle(channel.location(),radius = channel.radius(),fill = channel.open(0)))
+            fill = channel.open(0) if len(channel.events()) > 0 else False
+            self.spatial.add_artist(Circle(channel.location(),radius = channel.radius(), fill = fill))
         
         # connect callbacks for interactivity
         self.fig.canvas.mpl_connect('key_press_event', self.key_pressed)
