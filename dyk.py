@@ -110,28 +110,19 @@ def active(data):
     assert(tmp.shape[-1] == 8)
     return (numpy.logical_and(tmp[...,[X100,X110]].sum(axis=-1) >= 3, tmp[...,X110] < 3 ))
     
-# returns number of subunits that have no ip3 bound
 def noip3(data):
+    ''' return the number of subunits that have no ip3 bound for each channel and each cluster and time'''
     tmp = data['states'] if data.shape[-1] != 8 else data;
-    if len(tmp.shape) == 3:
-        assert(tmp.shape[2] == 8)
-        return tmp[:,:,[X000,X010,X011,X001]].sum(axis=1).sum(axis = 1)
-    elif len(tmp.shape) == 2:
-        assert(tmp.shape[1] == 8)
-        return tmp[:,[X000,X010,X011,X001]].sum()
-
-# return the number of subunits that have ip3 bound
+    assert(tmp.shape[-1] == 8)
+    
+    return tmp[...,[X000,X010,X011,X001]].sum(axis = -1)
+    
 def withip3(data):
+    ''' for each channel and each time return the number of subunits that have ip3 bound '''
     tmp = data['states'] if data.shape[-1] != 8 else data;
     assert(tmp.shape[-1] == 8)
     
     return tmp[...,[X100,X110,X111,X101]].sum(axis = -1)
-    #if len(tmp.shape) == 3:
-    #    assert(tmp.shape[2] == 8)
-    #    return tmp[:,:,[X100,X110,X111,X101]].sum(axis=1).sum(axis = 1)
-    #elif len(tmp.shape) == 2:
-    #    assert(tmp.shape[1] == 8)
-    #    return tmp[:,[X100,X110,X111,X101]].sum()
 
 def inhibited(data):
     ''' return number of inhibited channels. a channel is inhibited if it has more then 2 active subunits and either one or two inhibited subunits '''
@@ -159,7 +150,8 @@ def overview(ax1,data):
     #plt.plot(frames,states[:,:,dyk.X101].sum(axis=1),lw=1)#,label = 'X101')
     #ax1.plot(frames,states[:,:,X110].sum(axis=1),lw = 1,c='gray',label = 'X110')
     #plt.plot(frames,states[:,:,dyk.X111].sum(axis=1),lw=1)#,label = 'X111')
-    ax1.plot(frames,noip3(states),lw=1,c='black',label = '# noip3')
+    nip3 = noip3(states).sum(axis = -1).sum(axis = -1)
+    ax1.plot(frames,nip3,lw=1,c='black',label = '# noip3')
     #ax1.plot(frames,inhibited(states),lw=1,c='orange',label = '# inhib')
     #ax2.plot(frames,available(states),lw=2,c='blue',label = '# active')
     #ax1.plot(frames,states[:,:,[dyk.X011,dyk.X001]].sum(axis=2).sum(axis=1),lw=2,c='red',label = 'inhib+noip3')
@@ -167,7 +159,8 @@ def overview(ax1,data):
     #ax2.plot(frames,(states[:,:,[dyk.X000,dyk.X010,dyk.X011,dyk.X001]].sum(axis=2)>=1).sum(axis=1))
     #ax2.plot(frames,(states[:,:,X110]>=3).sum(axis=1),lw = 2,c='green',label = '# open')
     #ax2.plot(frames,16-(states[:,:,[X000,X010,X011,X001]].sum(axis=2)>=2).sum(axis=1),lw = 2,c = 'red',label = '# ip3 > 2')
-    ax2.plot(frames,(states[:,:,[X100,X110,X111,X101]].sum(axis=2)==3).sum(axis=1),lw = 2,c = 'orange',label = '# ip3 == 3')
+    available = activatable(states).sum(axis = -1).sum(axis = -1)
+    ax2.plot(frames,available,lw = 2,c = 'orange',label = '# activatable')
     #ax2.plot(frames,(states[:,:,[X100,X110,X111,X101]].sum(axis=2)==4).sum(axis=1),lw = 2,c = 'red',label = '# ip3 == 4')
     ax1.legend(loc='upper left',title = 'subunits')
     ax2.legend(loc='upper right',title = 'channels')
