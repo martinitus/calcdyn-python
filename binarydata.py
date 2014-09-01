@@ -4,6 +4,7 @@ import numpy
 import scipy.spatial
 import scipy.integrate
 import scipy.interpolate
+import collections
 from progressbar import ConsoleProgressBar as ProgressBar
 
 from scipy.interpolate import LinearNDInterpolator,  interp1d
@@ -19,7 +20,7 @@ def chunks(f,framesize,blocksize=1000):
         f.seek(i*blocksize*framesize*4, os.SEEK_SET)
         yield numpy.fromfile(f,dtype=(numpy.float32,(framesize,)),count = blocksize)
         
-    f.seek(blocks*blocksize*4,os.SEEK_SET)
+    f.seek(blocks*blocksize*framesize*4,os.SEEK_SET)
     yield numpy.fromfile(f,dtype=(numpy.float32,(framesize,)),count = frames-(blocks+1)*blocksize-1)
 
 # downsample binary dataset of new format
@@ -54,7 +55,14 @@ def downsample(path,dataset, force = False, verbose = False):
         
         frames = frames + len(data)
         #append the frames
-        assert((data[1:,0]>=data[:-1,0]).all())
+        if not (data[1:,0]>=data[:-1,0]).all():
+            fail = (data[1:,0]>=data[:-1,0]).all()
+            print "Warning, the data seems to be corrupt: the frame information is not a rising list!",
+            print "framesize:", framesize
+            print "frames:", frames
+            print data[fail,0]
+            print data[:,0]
+        #~assert()
         data[:,0].tofile(framefile)
         #append the data
         data[:,1:].tofile(datafile)
@@ -124,9 +132,13 @@ class SpatialData(object):
         # read the coordinates              
         self.__nodes = numpy.fromfile(open(path+dataset+".coordinates.bin"), dtype=(numpy.float32,(3,)))
         
-        # if all z-coordinates are equal, i.e. we have a 2D dataset, then drop z-coordinate
-        if (self.__nodes[:,2] == self.__nodes[0,2]).all():
-            self.__nodes = self.__nodes[:,0:2]
+        # if all z-coordinates are equal, assume a 2D dataset
+        self.__2D = (self.__nodes[:,2] == self.__nodes[0,2]).all()
+        #if self.__2D:
+            # drop z-coordinate
+            #self.__nodes = self.__nodes[:,0:2]
+            
+        print self.__2D
         
         if refresh:
             downsample(path,dataset)
@@ -177,21 +189,81 @@ class SpatialData(object):
     #~ if t is None, the interpolation is done for all frames
     #~ if both, x and t are not None, the interpolation is done for all x and all t
     #~ if t is scalar, and either, x or y are arrays, the return type will be onedimensional
-    def __call__(self,t = None, x = None,fill_value = numpy.nan):
-       
+    def __call__(self,t = None, x = None):
+        '''
+         perform linear interpolation in space and time 
+         If x is None, interpolate data for all nodes in time for the given times stored in t.
+         If t is None, interpolate data for all frames in space for the given coordinates stored in x.
+         
+         If both, t and x are arrays, return an array with shape  (len(t), len(x))
+         If either t or x is scalar, return an array with shape
+        '''
+    
+        assert(t != None or x != None)
         
-        if t == None and not x == None:
-            ip = LinearNDInterpolator(self.nodes(),self.data(transposed = True))
-            r  = ip(x)
+        if t == None:
+            # TODO make this more efficient
+            t = self.__frames
+        if x == None:
+            # TODO make this more efficient
+            x = self.__nodes
+        
+        assert(isinstance( x, collections.Iterable ))
+        
+        # if t or x a scalar values, make them iterable
+        x = [x] if not isinstance( x[0], collections.Iterable ) else x
+        t = [t] if not isinstance( t, collections.Iterable ) else t
+        
+        # define the roi we need to load from the memmap
+        
+        lower_left  = numpy.min(x, axis = 0)
+        upper_right = numpy.max(x, axis = 0)
+        
+        print x
+        print lower_left, upper_right
+        
+        print (self.__nodes >= lower_left).all(axis = 1).sum()
+        print (self.__nodes <= upper_right).all(axis = 1).sum()
+        
+        delauney = scipy.spatial.Delaunay(nodes, qhull_options= "Qbb Qc Qz QJ")
+        
+        simplices = delauney.find_simplex(x)
+        
+        # create a mask selecting all nodes within the roi
+        mask = numpy.logical_and( (self.__nodes >= lower_left).all(axis = 1),
+                                  (self.__nodes <= upper_right).all(axis = 1))
+                                  
+        mask = numpy.ones(shape= (len(mask),), dtype = bool)
+        
+        print "Found", mask.sum(), "coordinates within range"
             
-            
-            if r.shape[0] == 1:
-                # erase empty first dimension if called with only a single coordinate
-                r = r[0]
-                
-            return self.frames(), r
+        # find min and max frame we need the data for
+        fmin  = self.__frames.searchsorted(min(t))-1
+        fmax  = self.__frames.searchsorted(max(t))+1
+        
+        # select the nodes we need to interpolate from
+        nodes = self.__nodes[mask]
+        
+        # depending of which dimesnion is larged, choose either frame ordered memmmap
+        # or coordinate ordered memmmap
+        if len(x) >= len(t):
+            data = self.__transposed[mask,fmin:fmax]
+        else:
+            data = self.__data[fmin:fmax,mask]
+        
+        # TODO make this more efficient
+        space_interpolator = LinearNDInterpolator(self.__nodes[mask], self.__data[mask,fmin:fmax])
+        
+        tmp = space_interpolator(x)
+        
+        time_interpolator  =  scipy.interpolate.interp1d(self.frames,tmp,copy = False)
+        
+        return time_interpolator(t)
         
         
+        #interpolator  = LinearNDInterpolator(nodes[:,[0,1]],data)
+        #interpolation = interpolator([[x,y]])[0]
+        #return self.__frames[fmin:fmax], interpolation
         '''
         #~ print "x:",x
         #~ print "y:",y
@@ -294,16 +366,25 @@ class SpatialData(object):
             xmax = xmax + 10
             ymin = ymin - 10 
             ymax = ymax + 10
-            selection = numpy.logical_and(numpy.logical_and(xmin<=self.__nodes[:,0],self.__nodes[:,0] <= xmax),numpy.logical_and(ymin<=self.__nodes[:,1],self.__nodes[:,1] <= ymax))
+            selectionx = numpy.logical_and(xmin<=self.__nodes[:,0],self.__nodes[:,0] <= xmax)
+            selectiony = numpy.logical_and(ymin<=self.__nodes[:,1],self.__nodes[:,1] <= ymax)
+            if not self.__2D:
+                selectionz = self.__nodes[:,2] == 500.
+                selection = numpy.logical_and(numpy.logical_and(selectionx,selectiony),selectionz)
+            else:
+                selection = numpy.logical_and(selectionx,selectiony)
             
         # take respect to tmin and tmax
         fmin  = 0 if not kwargs.has_key('tmin') else self.__frames.searchsorted(kwargs['tmin'])-1
         fmax  = len(self.__frames)-1 if not kwargs.has_key('tmax') else self.__frames.searchsorted(kwargs['tmax'])+1
         
+        # print self.__nodes
+        # print selection.sum()
+        
         nodes = self.__nodes[selection]
         data  = self.__transposed[selection,fmin:fmax]
             
-        interpolator  = LinearNDInterpolator(nodes,data)
+        interpolator  = LinearNDInterpolator(nodes[:,[0,1]],data)
         interpolation = interpolator([[x,y]])[0]
         return self.__frames[fmin:fmax], interpolation
         
@@ -381,7 +462,18 @@ class SpatialData(object):
     def grid(self, time, xmin,xmax,ymin,ymax,resolution):
         xi = numpy.linspace(xmin,xmax,resolution)
         yi = numpy.linspace(ymin,ymax,resolution)
-        zi = scipy.interpolate.griddata(self.__nodes, self.snapshot(time), (xi[None,:], yi[:,None]), method='cubic')
+        dim3 = True
+        if not self.__2D:            
+            zslize = 500.
+            selection = self.__nodes[:,2] == zslize
+            nodes = self.__nodes[selection,0:2]
+            snapshot = self.snapshot(time)
+            snapshot = snapshot[selection]
+        else:
+            nodes = self.__nodes[:,0:2]
+            snapshot = self.snapshot(time)
+            
+        zi = scipy.interpolate.griddata(nodes, snapshot, (xi[None,:], yi[:,None]), method='cubic')
         return zi
         
     def extend(self):
