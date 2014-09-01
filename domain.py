@@ -31,11 +31,11 @@ class Domain(object):
         
         if config.has_option(name,'components'):
             for component in config.get(name,'components').split(','):
-                #try:
-                self.__dict__[component] = DataType(path, self, component)
+                try:
+                    self.__dict__[component] = DataType(path, self, component)
 
-               # except:
-                #    print "Warning: could not load component:", name, component,sys.exc_info()[0]
+                except:
+                    print "Warning: could not load component:", name, component,sys.exc_info()[0]
 
     def components(self):
         return self.keys();
