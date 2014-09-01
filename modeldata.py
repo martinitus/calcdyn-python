@@ -97,10 +97,13 @@ class EventData(object):
                       ('transitions.bin',    load_bin),
                       ('transitions.csv',    load_csv),]
         
+        self._data = None
         for filename, openfunc in file_order:
-            if os.path.isfile(path + '/' + filename):
+            if os.path.isfile(path + '/' + filename): # and os.path.getsize(path + '/' + filename) > 0
                 self._data = openfunc(path + '/' + filename)                
                 break
+                
+        assert(self._data != None)
         
         if transitions:
             selection = numpy.roll((self._data['noch'][1:]!=self._data['noch'][:-1]),1)
