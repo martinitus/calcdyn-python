@@ -13,13 +13,14 @@ def types_binary(channels,clusters = 1):
 def loadtxt(filename,channels):
     tmp = numpy.loadtxt(filename, dtype = [('t', numpy.double), ('chid', numpy.int32), ('clid', numpy.int32),
                                            ('tr','>S8'), ('noch',numpy.int32),('nocl',numpy.int32),
-                                           ('states','>S6',(channels))])
+                                           ('states',bool,(1,channels))])
                                    
-    return numpy.fromiter(itertools.izip(tmp['t'],tmp['chid'],tmp['clid'],tmp['noch'],tmp['nocl'],[[s == 'open' for s in f] for f in tmp['states']]),
-                                     dtype = types_binary(channels))
+    return numpy.fromiter(itertools.izip(
+                                tmp['t'],tmp['chid'],tmp['clid'],tmp['noch'],tmp['nocl'],
+                                tmp['states']), dtype = types_binary(channels))
 
 def state_type():
-    return ('>S6')
+    return (bool)
 
 def open(data):
     '''
@@ -27,7 +28,10 @@ def open(data):
         If state is multidimensional array of states, returns an array 
         with dimension reduced by one, masking the open channels as True, closed as False.
     '''
-    if len(data.shape) == 1:
+    print data
+    print isinstance(data, numpy.recarray)
+    print data.dtype
+    if isinstance(data, numpy.recarray):
         tmp = data['states']
     else:
         tmp = data
